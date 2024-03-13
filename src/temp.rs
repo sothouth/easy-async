@@ -29,6 +29,6 @@ mod tests {
     fn try_my_primitive_future() {
         use async_std::task;
         use async_std::prelude::*;
-        task::block_on();
+        task::block_on(async{1});
     }
 }
