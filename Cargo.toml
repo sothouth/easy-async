@@ -5,3 +5,6 @@ edition = "2021"
 
 [dependencies]
 async-std = { version = "*", features = ["unstable"] }
+waker-fn = { version = "*" }
+crossbeam = { version = "*" }
+futures-lite = { version = "*" }
