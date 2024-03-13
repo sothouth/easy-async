@@ -57,17 +57,14 @@ impl<T> Future for SpawnBlocking<T> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn try_spawn_blocking() {
-        use async_std::task;
         use async_std::prelude::*;
-        assert_eq!(task::block_on(spawn_blocking(||{1})),
-        1
-    );
+        use async_std::task;
+        assert_eq!(task::block_on(spawn_blocking(|| { 1 })), 1);
     }
 }
