@@ -1,10 +1,10 @@
 use waker_fn::waker_fn;
-// use futures_lite::pin;
 use crossbeam::sync::Parker;
+// use std::thread::park;
 use std::future::Future;
+// use futures_lite::pin;
 use std::pin::pin;
 use std::task::{Context, Poll};
-use std::thread;
 
 pub fn block_on<F: Future>(future: F) -> F::Output {
     let parker = Parker::new();
