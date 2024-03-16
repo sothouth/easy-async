@@ -11,3 +11,4 @@ crossbeam = { version = "*" }
 futures-lite = { version = "*" }
 futures = { version = "*" }
 num_cpus = { version = "*" }
+mini-redis = { version = "*" }
