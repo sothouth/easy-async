@@ -4,8 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+tokio = { version = "*", features = ["full"] }
 async-std = { version = "*", features = ["unstable"] }
 waker-fn = { version = "*" }
 crossbeam = { version = "*" }
 futures-lite = { version = "*" }
 futures = { version = "*" }
+num_cpus = { version = "*" }
