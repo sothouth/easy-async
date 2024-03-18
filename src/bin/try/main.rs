@@ -9,6 +9,7 @@ use std::sync;
 use std::task::{self,Poll};
 use std::thread;
 
+use futures::future::MaybeDone;
 mod refer{
     use tokio;
     use smol;
@@ -46,6 +47,7 @@ impl async_iter::AsyncIterator for Counter{
 fn main(){
     let a=async{1};
     easy_async::block_on::block_on(a);
+    join!(async{1},async{2});
 
 }
 

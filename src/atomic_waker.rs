@@ -1,5 +1,6 @@
 use std::{
     cell::UnsafeCell,
+    fmt,
     sync::atomic::{AtomicUsize, Ordering::*},
     task::Waker,
 };
@@ -61,7 +62,9 @@ impl AtomicWaker {
                 if let Err(state) = res {
                     debug_assert_eq!(state, REGISTERING | WAKING);
                     let waker = unsafe { (*self.waker.get()).take() }.unwrap();
-                    self.state.store(WAITING, Release);
+                    // cannot use self.state.store(WAITING, Release);
+                    // because waker might be woken by other thread
+                    self.state.swap(WAITING, AcqRel);
                     waker.wake();
                 }
             }
@@ -72,5 +75,17 @@ impl AtomicWaker {
                 debug_assert!(state == REGISTERING || state == REGISTERING | WAKING);
             }
         }
+    }
+}
+
+impl Default for AtomicWaker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl fmt::Debug for AtomicWaker {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "AtomicWaker")
     }
 }

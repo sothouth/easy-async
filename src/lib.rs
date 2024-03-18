@@ -3,7 +3,7 @@ mod temp;
 mod timer_future;
 
 
-
+pub mod future;
 pub mod atomic_waker;
 
 pub mod executor;
