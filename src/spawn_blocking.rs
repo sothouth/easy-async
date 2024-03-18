@@ -63,7 +63,7 @@ mod tests {
 
     #[test]
     fn try_spawn_blocking() {
-        use async_std::prelude::*;
+        // use async_std::prelude::*;
         use async_std::task;
         assert_eq!(task::block_on(spawn_blocking(|| { 1 })), 1);
     }

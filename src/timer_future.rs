@@ -1,47 +1,51 @@
 use std::{
+    cell::UnsafeCell,
     future::Future,
     pin::Pin,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, AtomicUsize, Ordering::*},
+        Arc, Mutex,
+    },
     task::{Context, Poll, Waker},
     thread,
     time::Duration,
 };
 
+use crate::atomic_waker::AtomicWaker;
+
 pub struct TimerFuture {
-    shared_state: Arc<Mutex<SharedState>>,
+    shared_state: Arc<SharedState>,
 }
 
 struct SharedState {
-    state: bool,
-    waker: Option<Waker>,
+    completed: AtomicBool,
+    waker: AtomicWaker,
 }
 
 impl Future for TimerFuture {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let mut shared_state = self.shared_state.lock().unwrap();
-        if shared_state.state {
+        if self.shared_state.completed.load(Acquire) {
             return Poll::Ready(());
         }
-        shared_state.waker = Some(cx.waker().clone());
+        self.shared_state.waker.register(cx.waker());
         Poll::Pending
     }
 }
 
 impl TimerFuture {
     pub fn new(duration: Duration) -> Self {
-        let shared_state = Arc::new(Mutex::new(SharedState {
-            state: false,
-            waker: None,
-        }));
+        let shared_state = Arc::new(SharedState {
+            completed: AtomicBool::new(false),
+            waker: AtomicWaker::new(),
+        });
 
         let timer_shared_state = shared_state.clone();
         thread::spawn(move || {
             thread::sleep(duration);
-            let mut shared_state = timer_shared_state.lock().unwrap();
-            shared_state.state = true;
-            if let Some(waker) = shared_state.waker.take() {
+            timer_shared_state.completed.store(true, Release);
+            if let Some(waker) = timer_shared_state.waker.take() {
                 waker.wake();
             }
         });
@@ -51,6 +55,15 @@ impl TimerFuture {
 }
 
 
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-
-
+    #[test]
+    fn test_timer_future() {
+        let future = TimerFuture::new(Duration::from_millis(100));
+        assert!(!future.shared_state.completed.load(Acquire));
+        thread::sleep(Duration::from_millis(200));
+        assert!(future.shared_state.completed.load(Acquire));
+    }
+}
