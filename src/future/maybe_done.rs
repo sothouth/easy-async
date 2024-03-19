@@ -22,6 +22,21 @@ impl<F: Future> MaybeDone<F> {
             _ => None,
         }
     }
+
+    #[inline]
+    pub fn is_future(&self) -> bool {
+        matches!(*self, Self::Future(_))
+    }
+
+    #[inline]
+    pub fn is_done(&self) -> bool {
+        matches!(*self, Self::Done(_))
+    }
+
+    #[inline]
+    pub fn is_taken(&self) -> bool {
+        matches!(*self, Self::Taken)
+    }
 }
 
 impl<F: Future> Future for MaybeDone<F> {
