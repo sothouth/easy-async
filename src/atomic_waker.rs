@@ -54,7 +54,13 @@ impl AtomicWaker {
         {
             Ok(_) => {
                 unsafe {
-                    *self.waker.get() = Some(waker.clone());
+                    if let Some(ref cur_waker) = *self.waker.get() {
+                        if !cur_waker.will_wake(waker) {
+                            *self.waker.get() = Some(waker.clone());
+                        }
+                    } else {
+                        *self.waker.get() = Some(waker.clone());
+                    }
                 }
                 let res = self
                     .state

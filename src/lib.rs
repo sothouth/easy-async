@@ -1,3 +1,5 @@
+#![feature(decl_macro)]
+
 
 mod temp;
 mod timer_future;
@@ -5,6 +7,7 @@ mod timer_future;
 
 pub mod future;
 pub mod atomic_waker;
+pub mod macros;
 
 pub mod executor;
 pub mod spawn_blocking;
