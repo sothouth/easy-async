@@ -35,3 +35,7 @@ Cargo.lock
 *.vsix
 
 *.code-workspace
+
+
+# draw.io
+*.drawio*
