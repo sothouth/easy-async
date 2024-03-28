@@ -54,10 +54,8 @@ impl AtomicWaker {
         {
             Ok(_) => {
                 unsafe {
-                    if let Some(ref cur_waker) = *self.waker.get() {
-                        if !cur_waker.will_wake(waker) {
-                            *self.waker.get() = Some(waker.clone());
-                        }
+                    if let Some(ref mut cur_waker) = *self.waker.get() {
+                        cur_waker.clone_from(waker);
                     } else {
                         *self.waker.get() = Some(waker.clone());
                     }
@@ -65,12 +63,11 @@ impl AtomicWaker {
                 let res = self
                     .state
                     .compare_exchange(REGISTERING, WAITING, AcqRel, Acquire);
-                if let Err(state) = res {
-                    debug_assert_eq!(state, REGISTERING | WAKING);
+                if let Err(actual) = res {
+                    debug_assert_eq!(actual, REGISTERING | WAKING);
                     let waker = unsafe { (*self.waker.get()).take() }.unwrap();
-                    // cannot use self.state.store(WAITING, Release);
-                    // because waker might be woken by other thread
-                    self.state.swap(WAITING, AcqRel);
+                    // original version: self.state.swap(WAITING, AcqRel);
+                    self.state.store(WAITING, Release);
                     waker.wake();
                 }
             }
