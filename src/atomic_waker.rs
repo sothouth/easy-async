@@ -66,8 +66,9 @@ impl AtomicWaker {
                 if let Err(actual) = res {
                     debug_assert_eq!(actual, REGISTERING | WAKING);
                     let waker = unsafe { (*self.waker.get()).take() }.unwrap();
-                    // original version: self.state.swap(WAITING, AcqRel);
-                    self.state.store(WAITING, Release);
+                    // cannot use self.state.store(WAITING, Release);
+                    // because waker might be take by other thread
+                    self.state.swap(WAITING, AcqRel);
                     waker.wake();
                 }
             }

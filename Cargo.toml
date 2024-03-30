@@ -4,21 +4,26 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+futures-timer = { version = "*" }
+
+
+smol = { version = "*" }
+futures-lite = { version = "*" }
+async-lock = { version = "*" }
 async-task = { version = "*" }
 async-executor = { version = "*" }
 async-channel = { version = "*" }
 
-futures-lite = { version = "*" }
-
-futures-timer = { version = "*" }
-
-smol = { version = "*" }
 crossbeam = { version = "*" }
+
+futures-core = { version = "*" }
+
+
 futures = { version = "*" }
 
 
 tokio = { version = "*", features = ["full"] }
-async-std = { version = "*", features = ["unstable","attributes"] }
+async-std = { version = "*", features = ["unstable", "attributes"] }
 waker-fn = { version = "*" }
 num_cpus = { version = "*" }
 mini-redis = { version = "*" }
