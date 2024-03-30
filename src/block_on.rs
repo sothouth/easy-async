@@ -13,7 +13,7 @@ pub fn block_on<F: Future>(fut: F) -> F::Output {
     loop {
         match fut.as_mut().poll(&mut cx) {
             Poll::Pending => thread::park(),
-            Poll::Ready(res) => break res,
+            Poll::Ready(res) => return res,
         }
     }
 }
