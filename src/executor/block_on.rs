@@ -22,7 +22,7 @@ pub fn block_on<F: Future>(fut: F) -> F::Output {
 mod tests {
     #[test]
     fn try_block_on() {
-        use crate::block_on::block_on;
+        use super::block_on;
         use crate::spawn_blocking::spawn_blocking;
         assert_eq!(block_on(spawn_blocking(|| { 1 })), 1);
     }

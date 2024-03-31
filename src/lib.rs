@@ -6,6 +6,8 @@ mod timer_future;
 
 pub mod executor_task;
 
+pub mod prelude;
+pub use executor::block_on::block_on;
 
 pub mod future;
 pub mod task;
@@ -15,4 +17,3 @@ pub mod stream;
 
 pub mod executor;
 pub mod spawn_blocking;
-pub mod block_on;
