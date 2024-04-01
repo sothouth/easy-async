@@ -53,12 +53,11 @@ impl AtomicWaker {
             .compare_exchange(WAITING, REGISTERING, AcqRel, Acquire)
         {
             Ok(_) => {
-                unsafe {
-                    if let Some(ref mut cur_waker) = *self.waker.get() {
-                        cur_waker.clone_from(waker);
-                    } else {
-                        *self.waker.get() = Some(waker.clone());
-                    }
+                // *self.waker.get() = Some(waker.clone());
+                match unsafe { &mut *self.waker.get() } {
+                    // check and clone maybe slightly faster
+                    Some(cur_waker) => cur_waker.clone_from(waker),
+                    none => *none = Some(waker.clone()),
                 }
                 let res = self
                     .state
