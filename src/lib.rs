@@ -1,6 +1,7 @@
 #![feature(decl_macro)]
 #![feature(async_iterator)]
 #![feature(future_join)]
+#![feature(noop_waker)]
 
 mod temp;
 mod timer_future;
