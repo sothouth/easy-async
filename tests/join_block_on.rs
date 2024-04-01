@@ -1,42 +1,33 @@
 #![feature(thread_sleep_until)]
-use std::future::Future;
-use std::pin::Pin;
-use std::task::{Context, Poll};
-use std::thread;
-use std::time::Duration;
-use std::time::Instant;
+#![feature(future_join)]
+use std::{
+    future::Future,
+    pin::Pin,
+    task::{Context, Poll},
+    thread,
+    time::{Duration, Instant},
+};
 
 use futures::future::join_all;
-use tokio::runtime::{Builder, Runtime};
 
-fn main() {
+#[test]
+fn many_io() {
     let num = 10;
     let sum_time = 1000;
-    let rt = Builder::new_current_thread().build().unwrap();
 
-    let mut handles = Vec::with_capacity(num);
-    // for i in 0..num {
-    //     handles.push(rt.spawn(SimIO::new(10, Duration::from_millis(100), i)));
-    // }
-    // for i in 0..num {
-    //     handles.push(SimIO::new(10, Duration::from_millis(100), i));
-    // }
+    let handles: Vec<SimIO> = (1..=num)
+        .map(|i| SimIO::new(i, Duration::from_millis((sum_time / i) as u64), i - 1))
+        .collect();
 
-    for i in 1..=num {
-        handles.push(SimIO::new(
-            i,
-            Duration::from_millis((sum_time / i) as u64),
-            i - 1,
-        ));
-    }
-    // let mut handles = vec![
-    //     SimIO::new(10, Duration::from_millis(100), 0),
-    //     SimIO::new(5, Duration::from_millis(200), 1),
-    //     SimIO::new(100, Duration::from_millis(10), 2),
-    // ];
-
-    // rt.block_on(join_all(handles));
     easy_async::block_on(join_all(handles));
+}
+
+#[test]
+fn join_two() {
+    use std::future::join;
+    let a = async { 1 };
+    easy_async::block_on(a);
+    easy_async::block_on(join!(async { 1 }, async { 2 }));
 }
 
 struct SimIO {

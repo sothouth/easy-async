@@ -1,4 +1,4 @@
-use crate::task::waker::current_thread_waker;
+use crate::task::thread_waker::current_thread_waker;
 use std::{
     future::Future,
     pin,
@@ -28,6 +28,7 @@ mod tests {
     }
 }
 
+// #[allow(unused)]
 mod old {
     use crossbeam::sync::Parker;
     use std::future::Future;

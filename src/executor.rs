@@ -18,6 +18,7 @@ use futures::{
 use crate::timer_future::{self, TimerFuture};
 
 pub mod block_on;
+pub mod local_executor;
 
 struct Executor {
     ready_queue: Receiver<Arc<Task>>,

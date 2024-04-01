@@ -30,19 +30,19 @@ mod refer {
         prelude,
         Timer,
         channel,
-        block_on,
+        block_on as _,
     };
     use crossbeam::{
         channel::{
             Sender,
             Receiver,
         }
-    }
+    };
     use tokio::{
         spawn,
         runtime::{Runtime, Builder},
         net::{TcpListener, TcpStream},
-        time::{sleep, Duration},
+        time::{sleep as _, Duration},
     };
 
     use std::{task::{Context},future::{Future}};
@@ -88,6 +88,6 @@ impl async_iter::AsyncIterator for Counter {
 
 fn main() {
     let a = async { 1 };
-    easy_async::block_on::block_on(a);
+    easy_async::block_on(a);
     join!(async { 1 }, async { 2 });
 }

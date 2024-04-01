@@ -1,16 +1,28 @@
 use std::{
+    async_iter::AsyncIterator,
     future::Future,
     pin::Pin,
     task::{Context, Poll},
 };
 
-pub trait Stream {
-    type Item;
+pub struct Stream<'a, T: Unpin + ?Sized> {
+    stream: &'a mut T,
+}
 
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>>;
+impl<T: AsyncIterator + Unpin + ?Sized> Future for Stream<'_, T> {
+    type Output = Option<T::Item>;
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        Pin::new(&mut *self.stream).poll_next(cx)
+    }
+}
 
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (0, None)
+impl<T: AsyncIterator + ?Sized> AsyncIteratorExt for T {}
+
+pub trait AsyncIteratorExt: AsyncIterator {
+    fn next(&mut self) -> Stream<Self>
+    where
+        Self: Unpin,
+    {
+        Stream { stream: self }
     }
 }
