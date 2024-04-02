@@ -8,7 +8,7 @@ use std::{
 static VTABLE: RawWakerVTable = RawWakerVTable::new(raw_clone, raw_wake, raw_wake_by_ref, raw_drop);
 
 fn raw_clone(ptr: *const ()) -> RawWaker {
-    unsafe { Arc::increment_strong_count(ptr) };
+    unsafe { Arc::increment_strong_count(ptr as *const Thread) };
     RawWaker::new(ptr, &VTABLE)
 }
 
@@ -21,7 +21,7 @@ fn raw_wake_by_ref(ptr: *const ()) {
 }
 
 fn raw_drop(ptr: *const ()) {
-    unsafe { Arc::decrement_strong_count(ptr) };
+    unsafe { Arc::decrement_strong_count(ptr as *const Thread) };
 }
 
 pub(crate) fn current_thread_waker() -> Waker {
