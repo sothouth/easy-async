@@ -24,7 +24,7 @@ fn raw_drop(ptr: *const ()) {
     unsafe { Arc::decrement_strong_count(ptr as *const Thread) };
 }
 
-pub(crate) fn current_thread_waker() -> Waker {
+pub fn current_thread_waker() -> Waker {
     let thread = Arc::into_raw(Arc::new(thread::current()));
     unsafe { Waker::from_raw(RawWaker::new(thread as *const (), &VTABLE)) }
 }
