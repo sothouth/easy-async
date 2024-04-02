@@ -45,15 +45,12 @@ impl TimerFuture {
         thread::spawn(move || {
             thread::sleep(duration);
             timer_shared_state.completed.store(true, Release);
-            if let Some(waker) = timer_shared_state.waker.take() {
-                waker.wake();
-            }
+            timer_shared_state.waker.wake();
         });
 
         Self { shared_state }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
