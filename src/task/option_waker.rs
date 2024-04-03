@@ -20,6 +20,11 @@ impl OptionWaker {
     }
 
     #[inline]
+    pub fn wake_by_ref(&self) {
+        unsafe { (*self.0.get()).wake_by_ref() };
+    }
+
+    #[inline]
     pub fn take(&self) -> Waker {
         self.replace(NOOP.clone())
     }
