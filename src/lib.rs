@@ -1,8 +1,16 @@
 #![feature(decl_macro)]
+
 #![feature(async_iterator)]
+
 #![feature(future_join)]
+
 #![feature(noop_waker)]
+
 #![feature(waker_getters)]
+
+#![feature(inline_const)]
+#![feature(const_trait_impl)]
+#![feature(effects)]
 
 mod temp;
 mod timer_future;

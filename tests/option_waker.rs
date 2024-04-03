@@ -8,6 +8,11 @@ fn same_check() {
     let a = OptionWaker::new();
     let b = Waker::noop().clone();
     assert!(a.will_wake(&b));
+
+    // ?????
+    // let b = Waker::noop();
+    // assert!(a.will_wake(&b));
+
     let c = OptionWaker::new();
     assert!(a.will_wake(&c));
     let d = a.clone();
@@ -19,4 +24,24 @@ fn same_check() {
     assert!(!e.will_wake(&f));
     let e = e.clone();
     assert!(e.will_wake(&e));
+}
+
+#[test]
+fn register() {
+    let a = OptionWaker::new();
+    let b = current_thread_waker();
+    a.register(&b);
+    assert!(a.will_wake(&b));
+    let c = current_thread_waker();
+    a.register(&c);
+    assert!(a.will_wake(&c));
+}
+
+#[test]
+fn is_noop() {
+    // ????????
+    // let a = OptionWaker::new();
+    // assert!(a.is_noop());
+    // a.register(Waker::noop());
+    // assert!(a.is_noop());
 }

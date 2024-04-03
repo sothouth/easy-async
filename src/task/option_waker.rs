@@ -1,7 +1,6 @@
 use std::borrow::Borrow;
 use std::cell::UnsafeCell;
 use std::fmt;
-use std::ptr;
 use std::task::Waker;
 
 const NOOP: &'static Waker = Waker::noop();
@@ -31,14 +30,20 @@ impl OptionWaker {
     }
 
     #[inline]
-    pub fn is_noop(&self) -> bool {
-        unsafe { ptr::eq((*self.0.get()).as_raw().vtable(), NOOP.as_raw().vtable()) }
-    }
-
-    #[inline]
     pub fn will_wake<T: Borrow<Waker>>(&self, other: &T) -> bool {
         unsafe { (*self.0.get()).will_wake(other.borrow()) }
     }
+
+    // not right.
+    // the Waker::noop()'s vtable have a pointer,
+    // and the any clone of Waker::noop()'s vtable have another same pointer,
+    // don't know why
+    // self.will_wake(NOOP.clone()) will return true result
+    // #[inline]
+    // pub fn is_noop(&self) -> bool {
+    //     // self.will_wake(NOOP)
+    //     unsafe { std::ptr::eq((*self.0.get()).as_raw().vtable(), NOOP.as_raw().vtable()) }
+    // }
 
     #[inline]
     fn replace(&self, waker: Waker) -> Waker {
