@@ -33,7 +33,7 @@ impl AtomicWaker {
 
     #[inline]
     fn replace(&self, waker: Waker) -> Waker {
-        mem::replace(unsafe { &mut *self.waker.get() }, waker)
+        unsafe { self.waker.get().replace(waker) }
     }
 
     pub fn take(&self) -> Waker {
