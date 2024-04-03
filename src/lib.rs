@@ -2,6 +2,7 @@
 #![feature(async_iterator)]
 #![feature(future_join)]
 #![feature(noop_waker)]
+#![feature(waker_getters)]
 
 mod temp;
 mod timer_future;
