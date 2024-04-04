@@ -1,11 +1,3 @@
-
-
-
-
-
-
-
-
 #[test]
 fn test() {
     use std::mem::size_of;
@@ -57,11 +49,11 @@ fn test_vtable() {
 
     let mut data = Data { a: 3, b: 2 };
     let vtable = vec![
-        0, 
-        7, 
-        8, 
-        add as usize, 
-        sub as usize, 
+        0,
+        7,
+        8,
+        add as usize,
+        sub as usize,
         mul as usize,
         div as usize,
     ];
@@ -79,3 +71,4 @@ fn test_vtable() {
     assert_eq!(p.div(), 1);
 }
 
+fn main() {}

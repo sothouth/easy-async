@@ -6,8 +6,8 @@
 #![feature(inline_const)]
 #![feature(const_trait_impl)]
 #![feature(effects)]
+#![feature(const_waker)]
 
-mod temp;
 mod timer_future;
 
 pub mod executor_task;
