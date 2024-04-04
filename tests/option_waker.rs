@@ -2,6 +2,7 @@
 use easy_async::task::option_waker::OptionWaker;
 use easy_async::task::thread_waker::current_thread_waker;
 use std::task::Waker;
+use std::thread;
 
 #[test]
 fn same_check() {
@@ -21,9 +22,12 @@ fn same_check() {
     let e = current_thread_waker();
     assert!(!a.will_wake(&e));
     let f = current_thread_waker();
-    assert!(!e.will_wake(&f));
+    assert!(e.will_wake(&f));
     let e = e.clone();
     assert!(e.will_wake(&e));
+
+    let f=thread::spawn(||{current_thread_waker()}).join().unwrap();
+    assert!(!e.will_wake(&f));
 }
 
 #[test]

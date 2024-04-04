@@ -25,6 +25,11 @@ fn raw_drop(ptr: *const ()) {
 }
 
 pub fn current_thread_waker() -> Waker {
-    let thread = Arc::into_raw(Arc::new(thread::current()));
-    unsafe { Waker::from_raw(RawWaker::new(thread as *const (), &VTABLE)) }
+    thread_local! {
+        static THREAD: Arc<Thread> = Arc::new(thread::current());
+    }
+    THREAD.with(|thread| {
+        let thread = Arc::into_raw(thread.clone()) as *const ();
+        unsafe { Waker::from_raw(RawWaker::new(thread, &VTABLE)) }
+    })
 }
