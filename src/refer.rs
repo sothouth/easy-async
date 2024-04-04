@@ -30,6 +30,8 @@ use crossbeam::channel::{Receiver, Sender};
 use futures;
 use futures_lite;
 
+use std::future::poll_fn;
+
 use futures_lite::{
     future
 };
@@ -49,3 +51,4 @@ use tokio::{
 use std::task::ready;
 use std::thread::park;
 use std::{future::Future, task::Context};
+

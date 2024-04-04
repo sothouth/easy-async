@@ -7,6 +7,7 @@
 #![feature(const_trait_impl)]
 #![feature(effects)]
 #![feature(const_waker)]
+#![feature(future_poll_fn)]
 
 mod timer_future;
 
