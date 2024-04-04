@@ -29,6 +29,11 @@ use crossbeam;
 use crossbeam::channel::{Receiver, Sender};
 use futures;
 use futures_lite;
+
+use futures_lite::{
+    future
+};
+
 use futures_timer;
 use mini_tokio;
 use smol;

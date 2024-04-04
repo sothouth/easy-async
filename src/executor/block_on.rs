@@ -37,3 +37,15 @@ pub fn block_on<F: Future>(fut: F) -> F::Output {
         }
     })
 }
+
+pub fn block_on_native<F: Future>(fut: F) -> F::Output {
+    let mut fut = pin::pin!(fut);
+    let (parker, waker) = parker_and_waker();
+    let cx = &mut Context::from_waker(&waker);
+    loop {
+        match fut.as_mut().poll(cx) {
+            Poll::Pending => parker.park(),
+            Poll::Ready(output) => return output,
+        }
+    }
+}
