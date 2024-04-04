@@ -1,10 +1,12 @@
 use std::borrow::Borrow;
 use std::cell::UnsafeCell;
-use std::fmt;
-use std::task::Waker;
+use std::task::{RawWakerVTable, Waker};
+use std::{fmt, ptr};
 
 const NOOP: &'static Waker = Waker::noop();
 
+/// another version of `UnsafeCell<Option<Waker>>`,
+/// maybe faster
 #[repr(transparent)]
 pub struct OptionWaker(UnsafeCell<Waker>);
 
@@ -39,16 +41,16 @@ impl OptionWaker {
         unsafe { (*self.0.get()).will_wake(other.borrow()) }
     }
 
-    // not right.
-    // the Waker::noop()'s vtable have a pointer,
-    // and the any clone of Waker::noop()'s vtable have another same pointer,
-    // don't know why
-    // self.will_wake(NOOP.clone()) will return true result
-    // #[inline]
-    // pub fn is_noop(&self) -> bool {
-    //     // self.will_wake(NOOP)
-    //     unsafe { std::ptr::eq((*self.0.get()).as_raw().vtable(), NOOP.as_raw().vtable()) }
-    // }
+    /// slightly slow
+    #[inline]
+    pub fn is_noop(&self) -> bool {
+        // NOOP.as_raw().vtable() is not right.
+        // const RawWaker::NOOP have two copy
+        // the Waker::noop()'s vtable have the ptr inside Waker::noop()
+        // any clone of Waker::noop()'s vtable ptr equal to RawWaker::NOOP.vtable
+        let ptr: &'static RawWakerVTable = NOOP.clone().as_raw().vtable();
+        unsafe { ptr::eq((*self.0.get()).as_raw().vtable(), ptr) }
+    }
 
     #[inline]
     fn replace(&self, waker: Waker) -> Waker {

@@ -1,4 +1,5 @@
 #![feature(noop_waker)]
+
 use easy_async::task::option_waker::OptionWaker;
 use easy_async::task::thread_waker::current_thread_waker;
 use std::task::Waker;
@@ -9,10 +10,6 @@ fn same_check() {
     let a = OptionWaker::new();
     let b = Waker::noop().clone();
     assert!(a.will_wake(&b));
-
-    // ?????
-    // let b = Waker::noop();
-    // assert!(a.will_wake(&b));
 
     let c = OptionWaker::new();
     assert!(a.will_wake(&c));
@@ -26,7 +23,7 @@ fn same_check() {
     let e = e.clone();
     assert!(e.will_wake(&e));
 
-    let f=thread::spawn(||{current_thread_waker()}).join().unwrap();
+    let f = thread::spawn(|| current_thread_waker()).join().unwrap();
     assert!(!e.will_wake(&f));
 }
 
@@ -43,9 +40,8 @@ fn register() {
 
 #[test]
 fn is_noop() {
-    // ????????
-    // let a = OptionWaker::new();
-    // assert!(a.is_noop());
-    // a.register(Waker::noop());
-    // assert!(a.is_noop());
+    let a = OptionWaker::new();
+    assert!(a.is_noop());
+    a.register(Waker::noop());
+    assert!(a.is_noop());
 }
