@@ -5,8 +5,7 @@ use std::{fmt, ptr};
 
 const NOOP: &'static Waker = Waker::noop();
 
-/// another version of `UnsafeCell<Option<Waker>>`,
-/// maybe faster
+/// Another version of `UnsafeCell<Option<Waker>>`, maybe faster.
 #[repr(transparent)]
 pub struct OptionWaker(UnsafeCell<Waker>);
 
@@ -26,22 +25,25 @@ impl OptionWaker {
         unsafe { (*self.0.get()).wake_by_ref() };
     }
 
+    /// Take the old waker and leave a NOOP waker.
     #[inline]
     pub fn take(&self) -> Waker {
         self.replace(NOOP.clone())
     }
 
+    /// The new waker will replace the old waker.
     #[inline]
     pub fn register(&self, waker: &Waker) {
         unsafe { (*self.0.get()).clone_from(waker) }
     }
 
+    /// Like `Waker::will_wake`.
     #[inline]
     pub fn will_wake<T: Borrow<Waker>>(&self, other: &T) -> bool {
         unsafe { (*self.0.get()).will_wake(other.borrow()) }
     }
 
-    /// slightly slow
+    /// Check if the waker is a NOOP waker, slightly slow.
     #[inline]
     pub fn is_noop(&self) -> bool {
         // NOOP.as_raw().vtable() is not right.

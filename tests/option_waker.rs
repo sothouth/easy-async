@@ -1,7 +1,7 @@
 #![feature(noop_waker)]
 
-use easy_async::task::option_waker::OptionWaker;
-use easy_async::task::thread_waker::current_thread_waker;
+use easy_async::waker::OptionWaker;
+use easy_async::waker::current_thread_waker;
 use std::task::Waker;
 use std::thread;
 

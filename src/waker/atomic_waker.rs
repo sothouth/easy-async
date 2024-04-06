@@ -1,9 +1,8 @@
-use std::{
-    cell::UnsafeCell,
-    fmt, mem,
-    sync::atomic::{AtomicUsize, Ordering::*},
-    task::Waker,
-};
+use std::fmt;
+use std::sync::atomic::{AtomicUsize, Ordering::*};
+use std::task::Waker;
+
+use super::OptionWaker;
 
 const WAITING: usize = 0b00;
 const WAKING: usize = 0b01;
@@ -11,7 +10,7 @@ const REGISTERING: usize = 0b10;
 
 pub struct AtomicWaker {
     state: AtomicUsize,
-    waker: UnsafeCell<Waker>,
+    waker: OptionWaker,
 }
 
 unsafe impl Send for AtomicWaker {}
@@ -21,7 +20,7 @@ impl AtomicWaker {
     pub fn new() -> Self {
         Self {
             state: AtomicUsize::new(WAITING),
-            waker: UnsafeCell::new(Waker::noop().clone()),
+            waker: OptionWaker::new(),
         }
     }
 
@@ -31,15 +30,10 @@ impl AtomicWaker {
         self.take().wake();
     }
 
-    #[inline]
-    fn replace(&self, waker: Waker) -> Waker {
-        unsafe { self.waker.get().replace(waker) }
-    }
-
     pub fn take(&self) -> Waker {
         match self.state.fetch_or(WAKING, AcqRel) {
             WAITING => {
-                let waker = self.replace(Waker::noop().clone());
+                let waker = self.waker.take();
                 self.state.fetch_and(!WAKING, Release);
                 waker
             }
@@ -58,15 +52,14 @@ impl AtomicWaker {
             .compare_exchange(WAITING, REGISTERING, AcqRel, Acquire)
         {
             Ok(_) => {
-                // check and clone maybe slightly faster
-                unsafe { (*self.waker.get()).clone_from(waker) };
+                self.waker.register(waker);
 
                 let res = self
                     .state
                     .compare_exchange(REGISTERING, WAITING, AcqRel, Acquire);
                 if let Err(actual) = res {
                     debug_assert_eq!(actual, REGISTERING | WAKING);
-                    let waker = self.replace(Waker::noop().clone());
+                    let waker = self.waker.take();
                     // cannot use self.state.store(WAITING, Release);
                     // because waker might be take by other thread
                     self.state.swap(WAITING, AcqRel);

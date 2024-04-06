@@ -11,7 +11,7 @@ use std::{
     time::Duration,
 };
 
-use crate::atomic_waker::AtomicWaker;
+use crate::waker::AtomicWaker;
 
 pub struct TimerFuture {
     shared_state: Arc<SharedState>,

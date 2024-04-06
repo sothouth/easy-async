@@ -31,7 +31,7 @@ pub fn spawn<T: Send + 'static>(future: impl Future<Output = T> + Send + 'static
 
                         let ex = GLOBAL.get().unwrap();
 
-                        crate::block_on(async { ex.run() });
+                        crate::block_on(async { ex.run().await });
                     })
                     .expect("spawn worker thread error");
             }
@@ -82,7 +82,14 @@ impl<'a> Executor<'a> {
         task
     }
 
-    pub fn run(&self) {}
+    pub async fn run(&self) {
+        let worker = Worker::new(&self.rt);
+
+        loop {
+            let runnable = worker.next().await;
+            runnable.run();
+        }
+    }
 
     pub fn schedule(&self) -> impl Fn(Runnable) + Send + Sync + 'static {
         let rt = self.rt.clone();
@@ -127,6 +134,18 @@ impl<'a> Worker<'a> {
         Self { rt, queue }
     }
 
+    pub async fn next(&self) -> Runnable {
+        if let Ok(r)=self.queue.pop(){
+            return r;
+        }
+
+        if let Ok(r)=self.rt.global_queue.pop(){
+            todo!()
+        }
+        todo!()
+
+    }
+
     pub fn block_run(&self) {
         use crate::executor::block_on::block_on;
         block_on(async { self.run().await });
@@ -137,10 +156,6 @@ impl<'a> Worker<'a> {
             let runnable = self.next().await;
             runnable.run();
         }
-    }
-
-    pub async fn next(&self) -> Runnable {
-        todo!()
     }
 }
 
@@ -158,4 +173,11 @@ impl Drop for Worker<'_> {
             r.schedule();
         }
     }
+}
+
+fn steal<T>(src: &ConcurrentQueue<T>, dst: &ConcurrentQueue<T>,want:usize){
+    while want!=0&&todo!(){
+        todo!()
+    }
+    todo!()
 }
