@@ -1,10 +1,10 @@
 //! poor imitation of async-executor
 use std::cell::UnsafeCell;
-use std::future::Future;
+use std::future::{poll_fn, Future};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::*};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
-use std::task::Waker;
+use std::task::{Poll, Waker};
 use std::thread;
 
 use concurrent_queue::ConcurrentQueue;
@@ -13,6 +13,7 @@ use slab::Slab;
 use async_task::{Builder as TaskBuilder, Runnable, Task};
 
 use crate::utils::call_on_drop::CallOnDrop;
+use crate::waker::OptionWaker;
 
 static GLOBAL: OnceLock<Executor<'_>> = OnceLock::new();
 
@@ -33,7 +34,7 @@ pub fn spawn<T: Send + 'static>(future: impl Future<Output = T> + Send + 'static
 
                         let ex = GLOBAL.get().unwrap();
 
-                        crate::block_on(async { ex.working().await });
+                        crate::block_on(async { ex.working(ith).await });
                     })
                     .expect("spawn worker thread error");
             }
@@ -89,8 +90,9 @@ impl<'a> Executor<'a> {
         task
     }
 
-    pub async fn working(&self) {
-        let worker = Worker::new(&self.rt);
+    pub async fn working(&self, id: usize) {
+        let worker = Worker::new(id, &self.rt);
+        self.rt.wakers.lock().unwrap().push(OptionWaker::new());
 
         loop {
             let runnable = worker.next().await;
@@ -129,7 +131,7 @@ pub struct Runtime {
     /// If a new task is scheduled.
     new_task: AtomicBool,
     /// Sleeping Worker's wakers.
-    sleepings: Mutex<Slab<Waker>>,
+    wakers: Mutex<Vec<OptionWaker>>,
     /// All task's waker.
     tasks: Mutex<Slab<Waker>>,
 }
@@ -140,8 +142,66 @@ impl Runtime {
             global_queue: ConcurrentQueue::unbounded(),
             local_queues: RwLock::new(Vec::new()),
             new_task: AtomicBool::new(true),
-            sleepings: Mutex::new(Slab::new()),
+            wakers: Mutex::new(Vec::new()),
             tasks: Mutex::new(Slab::new()),
+        }
+    }
+
+    pub fn notify(&self) {
+        match self.new_task.compare_exchange(false, true, AcqRel, Acquire) {
+            // no new task
+            Ok(_) => {
+                if 
+                for waker in self.wakers.lock().unwrap().iter(){
+
+                }
+            },
+            // already have new task
+            Err(_) => {}
+        }
+    }
+}
+
+pub struct Waiters{
+    len:usize,
+    wakers:Vec<(usize,Waker)>,
+    free_ids:Vec<usize>,
+}
+
+impl Waiters{
+    pub fn new() -> Self{
+        Self{
+            len:0,
+            wakers:Vec::new(),
+            free_ids:Vec::new(),
+        }
+    }
+
+    pub fn push(&mut self, waker:&Waker)->usize{
+        let id = self.free_ids.pop().unwrap_or(self.len);
+        self.len+=1;
+        self.wakers.push((id,waker.clone()));
+        id
+    }
+
+    pub fn update(&mut self, id:usize, waker:&Waker)->bool{
+        for (cur_id,cur_waker) in self.wakers.iter_mut(){
+            if *cur_id == id{
+                cur_waker.clone_from(waker);
+                return false;
+            }
+        }
+
+        self.wakers.push((id,waker.clone()));
+        true
+    }
+
+    pub fn remove(&mut self, id:usize){
+        for (cur_id,cur_waker) in self.wakers.iter_mut(){
+            if *cur_id == id{
+                self.free_ids.push(id);
+                return;
+            }
         }
     }
 }
@@ -150,33 +210,31 @@ const LOCAL_QUEUE_SIZE: usize = 512;
 
 /// single thread worker
 pub struct Worker<'a> {
+    /// The worker's unique id.
+    id: usize,
+    /// The runtime.
     rt: &'a Runtime,
+    /// The worker's task queue.
     queue: Arc<ConcurrentQueue<Runnable>>,
+    /// When 0,the worker is working, when >0, the worker is sleeping.
     sleeping: AtomicUsize,
+    /// The times this worker polls.
+    ticks: AtomicUsize,
 }
 
 impl<'a> Worker<'a> {
-    pub fn new(rt: &'a Runtime) -> Self {
+    pub fn new(id: usize, rt: &'a Runtime) -> Self {
         let queue = Arc::new(ConcurrentQueue::bounded(LOCAL_QUEUE_SIZE));
 
         rt.local_queues.write().unwrap().push(queue.clone());
 
         Self {
+            id,
             rt,
             queue,
             sleeping: AtomicUsize::new(0),
+            ticks: AtomicUsize::new(0),
         }
-    }
-
-    pub async fn next(&self) -> Runnable {
-        if let Ok(r) = self.queue.pop() {
-            return r;
-        }
-
-        if let Ok(r) = self.rt.global_queue.pop() {
-            todo!()
-        }
-        todo!()
     }
 
     pub fn block_run(&self) {
@@ -189,6 +247,36 @@ impl<'a> Worker<'a> {
             let runnable = self.next().await;
             runnable.run();
         }
+    }
+
+    pub async fn next(&self) -> Runnable {
+        let runnable = poll_fn(|cx| {
+            if let Ok(r) = self.queue.pop() {
+                return Poll::Ready(r);
+            }
+
+            if let Ok(r) = self.rt.global_queue.pop() {
+                return Poll::Ready(r);
+            }
+
+            Poll::Pending
+        })
+        .await;
+    }
+
+    pub async fn next_by(&self, mut search: impl FnMut() -> Option<Runnable>) -> Runnable {
+        poll_fn(|cx| loop {
+            match search() {
+                Some(r) => {
+                    self.wake();
+                    return Poll::Ready(r);
+                }
+                None => {
+                    return Poll::Pending;
+                }
+            }
+        })
+        .await
     }
 }
 
@@ -209,7 +297,7 @@ impl Drop for Worker<'_> {
 }
 
 fn steal<T>(src: &ConcurrentQueue<T>, dst: &ConcurrentQueue<T>) {
-    for _ in 0..(src.len() / 2).min(dst.capacity().unwrap() - dst.len()) {
+    for _ in 0..((src.len() + 1) / 2).min(dst.capacity().unwrap() - dst.len()) {
         match src.pop() {
             Ok(r) => assert!(dst.push(r).is_ok()),
             Err(_) => break,
