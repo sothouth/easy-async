@@ -8,9 +8,12 @@ num_cpus = { version = "*" }
 parking = { version = "*" }
 concurrent-queue = { version = "*" }
 easy-parallel = { version = "*" }
+slab = { version = "*" }
+
 
 futures-timer = { version = "*" }
 
+# monoio = { version = "*" }
 
 smol = { version = "*" }
 futures-lite = { version = "*" }

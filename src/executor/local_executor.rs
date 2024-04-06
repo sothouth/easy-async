@@ -1,15 +1,17 @@
-/// tring
+/// imitate smol
+use std::cell::UnsafeCell;
 use std::future::{poll_fn, Future};
+use std::marker::PhantomData;
 use std::pin::{pin, Pin};
 use std::ptr::NonNull;
-use std::sync::OnceLock;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use concurrent_queue::ConcurrentQueue;
 use num_cpus;
+use slab::Slab;
 
 use async_task::{Builder as TaskBuilder, Runnable, Task};
 
@@ -18,58 +20,106 @@ mod refer {
     use async_task::{Runnable, Task};
     use smol;
     use tokio::runtime::Builder;
-}
-
-static RUNTIME: OnceLock<Runtime> = OnceLock::new();
-
-pub fn spawn<T>(future: impl Future<Output = T> + Send + 'static) -> Task<T> {
-    todo!()
+    // use monoio;
 }
 
 const LOCAL_QUEUE_SIZE: usize = 512;
-const GLOBAL_QUEUE_SIZE: usize = 0;
 
-pub struct Builder {
-    executor_num: usize,
-    local_queue_size: usize,
-    global_queue_size: usize,
-}
-
-pub struct Runtime<'a> {
+/// runtime core
+pub struct Runtime {
     global_queue: ConcurrentQueue<Runnable>,
-    local_queues: Vec<&'a ConcurrentQueue<Runnable>>,
+    local_queues: RwLock<Vec<Arc<ConcurrentQueue<Runnable>>>>,
+    tasks: Mutex<Slab<Waker>>,
 }
 
-pub struct Excutor {
-    queue: ConcurrentQueue<Runnable>,
+/// handle for runtime
+pub struct Executor<'a> {
+    rt: OnceLock<Arc<Runtime>>,
+    _marker: PhantomData<UnsafeCell<&'a ()>>,
 }
 
-// pub struct LocalExecutor {}
+/// single thread worker
+pub struct Worker<'a> {
+    rt: &'a Runtime,
+    queue: Arc<ConcurrentQueue<Runnable>>,
+}
 
-
-
-impl Builder {
+impl<'a> Executor<'a> {
     pub fn new() -> Self {
         Self {
-            executor_num: num_cpus::get(),
-            local_queue_size: LOCAL_QUEUE_SIZE,
-            global_queue_size: GLOBAL_QUEUE_SIZE,
+            rt: OnceLock::new(),
+            _marker: PhantomData,
         }
     }
 
-    pub fn build(self) -> Runtime<'static> {
+    pub fn spawn<T: Send + 'a>(&self, future: impl Future<Output = T> + Send + 'a) -> Task<T> {
         todo!()
     }
 
-    pub fn worker_threads(mut self, num: usize) -> Self {
-        self.executor_num = num;
-        self
+    pub fn rt(&self) -> Arc<Runtime> {
+        self.rt
+            .get_or_init(|| {
+                let num = num_cpus::get();
+                let mut rt = Arc::new(Runtime {
+                    global_queue: ConcurrentQueue::unbounded(),
+                    local_queues: RwLock::new(Vec::with_capacity(num)),
+                    tasks: Mutex::new(Slab::new()),
+                });
+
+                for _ in 0..num {
+                    let rt = rt.clone();
+                    thread::Builder::new()
+                        .name(format!("Woker-{}", num))
+                        .spawn(move || {
+                            let worker = Worker::new(&rt);
+                            worker.run();
+                        })
+                        .expect("failed to spawn worker");
+                }
+
+                rt
+            })
+            .clone()
     }
 }
 
-impl Default for Builder {
-    fn default() -> Self {
-        Self::new()
+impl<'a> Worker<'a> {
+    pub fn new(rt: &'a Runtime) -> Self {
+        let queue = Arc::new(ConcurrentQueue::bounded(LOCAL_QUEUE_SIZE));
+
+        rt.local_queues.write().unwrap().push(queue.clone());
+
+        Self { rt, queue }
+    }
+
+    pub fn run(&self) {
+        use crate::executor::block_on::block_on;
+        block_on(async {
+            loop {
+                let runnable = self.next().await;
+                runnable.run();
+            }
+        });
+    }
+
+    pub async fn next(&self) -> Runnable {
+        todo!()
+    }
+}
+
+impl Drop for Worker<'_> {
+    fn drop(&mut self) {
+        self.queue.close();
+
+        self.rt
+            .local_queues
+            .write()
+            .unwrap()
+            .retain(|q| !Arc::ptr_eq(q, &self.queue));
+
+        while let Ok(r) = self.queue.pop() {
+            r.schedule();
+        }
     }
 }
 

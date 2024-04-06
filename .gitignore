@@ -36,6 +36,3 @@ Cargo.lock
 
 *.code-workspace
 
-
-# draw.io
-*.drawio*
