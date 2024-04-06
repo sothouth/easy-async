@@ -5,12 +5,6 @@ pub mod parker_and_waker;
 pub mod option_waker;
 
 
-use std::future::Future;
-use std::sync::{Arc,atomic::{AtomicUsize,Ordering::*}};
-use std::task::{Context,Waker,Poll};
+pub mod task;
 
-pub struct Task<F,W>{
-    state:AtomicUsize,
-    future:F,
-    waker:W,
-}
+

@@ -1,20 +1,24 @@
 use std::borrow::Borrow;
+use std::cell::Cell;
 use std::cell::UnsafeCell;
 use std::fmt;
 use std::ptr;
+use std::sync::Arc;
 use std::task::{RawWaker, RawWakerVTable, Waker};
 
-// const NOOP: Waker = unsafe { Waker::from_raw(RAW_NOOP) };
-// const RAW_NOOP: RawWaker = {
-//     const VTABLE: RawWakerVTable = RawWakerVTable::new(|_| RAW_NOOP, |_| {}, |_| {}, |_| {});
-//     RawWaker::new(ptr::null(), &VTABLE)
-// };
+// #[no_mangle]
+pub fn b() -> isize {
+    let n = Arc::new(Cell::new(0));
+    *n.borrow_mut() += 1;
+    n.get()
+}
 
-// const NOOP: &Waker = &unsafe {
-//     Waker::from_raw({
-//         const VTABLE: RawWakerVTable = RawWakerVTable::new(|_| RAW_NOOP, |_| {}, |_| {}, |_| {});
-//         RawWaker::new(ptr::null(), &VTABLE)
-//     })
-// };
+// #[no_mangle]
+pub fn r() -> isize {
+    let mut n = 0;
+    let rn = &mut n;
+    *rn += 1;
+    *rn
+}
 
 fn main() {}
