@@ -32,20 +32,20 @@ mod refer {
 
 
 
-pub struct Task<T> {
-    state: AtomicUsize,
-    future: F,
-    waker: W,
-}
+// pub struct Task<T> {
+//     state: AtomicUsize,
+//     future: F,
+//     waker: W,
+// }
 
-pub struct Todo {
-    future: Pin<Box<dyn Future<Output=Any> + Send>>,
-    output: Option<NonNull<()>>,
-}
+// pub struct Todo {
+//     future: Pin<Box<dyn Future<Output=Any> + Send>>,
+//     output: Option<NonNull<()>>,
+// }
 
 
-impl Todo{
-    fn build<F,S>(future:F,schedule:S)->Todo{
+// impl Todo{
+//     fn build<F,S>(future:F,schedule:S)->Todo{
 
-    }
-}
+//     }
+// }
