@@ -1,6 +1,8 @@
+//! poor imitation of async-executor
 use std::cell::UnsafeCell;
 use std::future::Future;
 use std::marker::PhantomData;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::*};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::task::Waker;
 use std::thread;
@@ -31,7 +33,7 @@ pub fn spawn<T: Send + 'static>(future: impl Future<Output = T> + Send + 'static
 
                         let ex = GLOBAL.get().unwrap();
 
-                        crate::block_on(async { ex.run().await });
+                        crate::block_on(async { ex.working().await });
                     })
                     .expect("spawn worker thread error");
             }
@@ -43,6 +45,7 @@ pub fn spawn<T: Send + 'static>(future: impl Future<Output = T> + Send + 'static
 /// handle for runtime
 pub struct Executor<'a> {
     rt: Arc<Runtime>,
+    /// Help to keep future and output lifetime check.
     _marker: PhantomData<UnsafeCell<&'a ()>>,
 }
 
@@ -55,6 +58,10 @@ impl<'a> Executor<'a> {
             rt: Arc::new(Runtime::new()),
             _marker: PhantomData,
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.rt.tasks.lock().unwrap().is_empty()
     }
 
     pub fn spawn<T: Send + 'a>(&self, future: impl Future<Output = T> + Send + 'a) -> Task<T> {
@@ -82,7 +89,7 @@ impl<'a> Executor<'a> {
         task
     }
 
-    pub async fn run(&self) {
+    pub async fn working(&self) {
         let worker = Worker::new(&self.rt);
 
         loop {
@@ -91,6 +98,7 @@ impl<'a> Executor<'a> {
         }
     }
 
+    #[inline]
     pub fn schedule(&self) -> impl Fn(Runnable) + Send + Sync + 'static {
         let rt = self.rt.clone();
 
@@ -100,11 +108,30 @@ impl<'a> Executor<'a> {
     }
 }
 
+impl Drop for Executor<'_> {
+    fn drop(&mut self) {
+        let mut tasks = self.rt.tasks.lock().unwrap();
+        for task in tasks.drain() {
+            task.wake();
+        }
+        drop(tasks);
+
+        while self.rt.global_queue.pop().is_ok() {}
+    }
+}
+
 /// runtime core
 pub struct Runtime {
-    pub(super) global_queue: ConcurrentQueue<Runnable>,
-    pub(super) local_queues: RwLock<Vec<Arc<ConcurrentQueue<Runnable>>>>,
-    pub(super) tasks: Mutex<Slab<Waker>>,
+    /// Global queue, all task will be sceduled in it.
+    global_queue: ConcurrentQueue<Runnable>,
+    /// All worker's queues.
+    local_queues: RwLock<Vec<Arc<ConcurrentQueue<Runnable>>>>,
+    /// If a new task is scheduled.
+    new_task: AtomicBool,
+    /// Sleeping Worker's wakers.
+    sleepings: Mutex<Slab<Waker>>,
+    /// All task's waker.
+    tasks: Mutex<Slab<Waker>>,
 }
 
 impl Runtime {
@@ -112,6 +139,8 @@ impl Runtime {
         Self {
             global_queue: ConcurrentQueue::unbounded(),
             local_queues: RwLock::new(Vec::new()),
+            new_task: AtomicBool::new(true),
+            sleepings: Mutex::new(Slab::new()),
             tasks: Mutex::new(Slab::new()),
         }
     }
@@ -123,6 +152,7 @@ const LOCAL_QUEUE_SIZE: usize = 512;
 pub struct Worker<'a> {
     rt: &'a Runtime,
     queue: Arc<ConcurrentQueue<Runnable>>,
+    sleeping: AtomicUsize,
 }
 
 impl<'a> Worker<'a> {
@@ -131,19 +161,22 @@ impl<'a> Worker<'a> {
 
         rt.local_queues.write().unwrap().push(queue.clone());
 
-        Self { rt, queue }
+        Self {
+            rt,
+            queue,
+            sleeping: AtomicUsize::new(0),
+        }
     }
 
     pub async fn next(&self) -> Runnable {
-        if let Ok(r)=self.queue.pop(){
+        if let Ok(r) = self.queue.pop() {
             return r;
         }
 
-        if let Ok(r)=self.rt.global_queue.pop(){
+        if let Ok(r) = self.rt.global_queue.pop() {
             todo!()
         }
         todo!()
-
     }
 
     pub fn block_run(&self) {
@@ -175,9 +208,11 @@ impl Drop for Worker<'_> {
     }
 }
 
-fn steal<T>(src: &ConcurrentQueue<T>, dst: &ConcurrentQueue<T>,want:usize){
-    while want!=0&&todo!(){
-        todo!()
+fn steal<T>(src: &ConcurrentQueue<T>, dst: &ConcurrentQueue<T>) {
+    for _ in 0..(src.len() / 2).min(dst.capacity().unwrap() - dst.len()) {
+        match src.pop() {
+            Ok(r) => assert!(dst.push(r).is_ok()),
+            Err(_) => break,
+        }
     }
-    todo!()
 }

@@ -18,6 +18,7 @@ mod refer {
     use async_executor;
     use async_task::{Runnable, Task as _};
     use smol;
+    use smol::Timer;
     use tokio::runtime::Builder;
     use tokio::runtime::Handle;
 }

@@ -9,6 +9,7 @@ parking = { version = "*" }
 concurrent-queue = { version = "*" }
 easy-parallel = { version = "*" }
 slab = { version = "*" }
+fastrand = { version = "*" }
 
 
 futures-timer = { version = "*" }
