@@ -2,7 +2,7 @@ use std::future::Future;
 use std::sync::OnceLock;
 use std::thread;
 
-use super::local_executor::Executor;
+use super::executor::Executor;
 
 use async_task::Task;
 
