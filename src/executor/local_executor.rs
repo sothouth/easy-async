@@ -25,33 +25,6 @@ mod refer {
     // use monoio;
 }
 
-static GLOBAL: OnceLock<Executor<'_>> = OnceLock::new();
-
-/// spawn a task
-pub fn spawn<T: Send + 'static>(future: impl Future<Output = T> + Send + 'static) -> Task<T> {
-    GLOBAL
-        .get_or_init(|| {
-            let ex = Executor::new();
-            let num = num_cpus::get();
-
-            for ith in 1..=num {
-                thread::Builder::new()
-                    .name(format!("worker-{}", ith))
-                    .spawn(move || {
-                        while GLOBAL.get().is_none() {
-                            thread::yield_now();
-                        }
-
-                        let ex = GLOBAL.get().unwrap();
-
-                        crate::block_on(async { ex.run() });
-                    })
-                    .expect("spawn worker thread error");
-            }
-            ex
-        })
-        .spawn(future)
-}
 
 const LOCAL_QUEUE_SIZE: usize = 512;
 
@@ -64,7 +37,7 @@ pub struct Runtime {
 
 /// handle for runtime
 pub struct Executor<'a> {
-    rt: OnceLock<Arc<Runtime>>,
+    rt: Arc<Runtime>,
     _marker: PhantomData<UnsafeCell<&'a ()>>,
 }
 
@@ -77,20 +50,30 @@ pub struct Worker<'a> {
     queue: Arc<ConcurrentQueue<Runnable>>,
 }
 
+impl Runtime {
+    pub fn new() -> Self {
+        Self {
+            global_queue: ConcurrentQueue::unbounded(),
+            local_queues: RwLock::new(Vec::new()),
+            tasks: Mutex::new(Slab::new()),
+        }
+    }
+}
+
 impl<'a> Executor<'a> {
     pub fn new() -> Self {
         Self {
-            rt: OnceLock::new(),
+            rt: Arc::new(Runtime::new()),
             _marker: PhantomData,
         }
     }
 
     pub fn spawn<T: Send + 'a>(&self, future: impl Future<Output = T> + Send + 'a) -> Task<T> {
-        let mut tasks = self.rt().tasks.lock().unwrap();
+        let mut tasks = self.rt.tasks.lock().unwrap();
 
         let entry = tasks.vacant_entry();
         let key = entry.key();
-        let rt = self.rt().clone();
+        let rt = self.rt.clone();
         let wraped = async move {
             let _guard = CallOnDrop(move || {
                 drop(rt.tasks.lock().unwrap().try_remove(key));
@@ -113,35 +96,11 @@ impl<'a> Executor<'a> {
     pub fn run(&self) {}
 
     pub fn schedule(&self) -> impl Fn(Runnable) + Send + Sync + 'static {
-        let rt = self.rt().clone();
+        let rt = self.rt.clone();
 
         move |runnable| {
             rt.global_queue.push(runnable).unwrap();
         }
-    }
-
-    pub fn rt(&self) -> &Arc<Runtime> {
-        self.rt.get_or_init(|| {
-            let num = num_cpus::get();
-            let rt = Arc::new(Runtime {
-                global_queue: ConcurrentQueue::unbounded(),
-                local_queues: RwLock::new(Vec::with_capacity(num)),
-                tasks: Mutex::new(Slab::new()),
-            });
-
-            for _ in 0..num {
-                let rt = rt.clone();
-                thread::Builder::new()
-                    .name(format!("Woker-{}", num))
-                    .spawn(move || {
-                        let worker = Worker::new(&rt);
-                        worker.run();
-                    })
-                    .expect("failed to spawn worker");
-            }
-
-            rt
-        })
     }
 }
 
@@ -156,7 +115,7 @@ impl<'a> Worker<'a> {
 
     pub fn block_run(&self) {
         use crate::executor::block_on::block_on;
-        block_on(async { self.run() });
+        block_on(async { self.run().await });
     }
 
     pub async fn run(&self) {
