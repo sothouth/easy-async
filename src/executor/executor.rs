@@ -1,10 +1,13 @@
-//! poor imitation of async-executor
+//! Faster than smol.
+//! * Cancel the use of asynchrony at the executor level.
+//! * Generate runtime using a top-down construction approach.
+//! * Removed the Sleepers mechanism with high consumption and used a simple Mutex to ensure low concurrency.
 use std::cell::UnsafeCell;
-use std::future::{poll_fn, Future};
+use std::future::Future;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::*};
-use std::sync::{Arc, Mutex, OnceLock, RwLock};
-use std::task::{Poll, Waker};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::task::Waker;
 use std::thread;
 
 use concurrent_queue::ConcurrentQueue;
@@ -13,33 +16,12 @@ use slab::Slab;
 use async_task::{Builder as TaskBuilder, Runnable, Task};
 
 use crate::utils::call_on_drop::CallOnDrop;
-use crate::waker::OptionWaker;
 
 static GLOBAL: OnceLock<Executor<'_>> = OnceLock::new();
 
 /// spawn a task
 pub fn spawn<T: Send + 'static>(future: impl Future<Output = T> + Send + 'static) -> Task<T> {
-    GLOBAL
-        .get_or_init(|| {
-            let ex = Executor::new();
-            let num = num_cpus::get();
-
-            for ith in 1..=num {
-                thread::Builder::new()
-                    .name(format!("worker-{}", ith))
-                    .spawn(move || {
-                        while GLOBAL.get().is_none() {
-                            thread::yield_now();
-                        }
-                        let ex = GLOBAL.get().unwrap();
-
-                        crate::block_on(ex.working(ith));
-                    })
-                    .expect("spawn worker thread error");
-            }
-            ex
-        })
-        .spawn(future)
+    GLOBAL.get_or_init(Executor::new).spawn(future)
 }
 
 /// handle for runtime
@@ -54,8 +36,23 @@ unsafe impl Sync for Executor<'_> {}
 
 impl<'a> Executor<'a> {
     pub fn new() -> Self {
+        let rt = Arc::new(Runtime::new());
+
+        for (ith, queue) in rt.local_queues.iter().enumerate() {
+            thread::Builder::new()
+                .name(format!("worker-{}", ith))
+                .spawn({
+                    let queue = queue.clone();
+                    let rt = rt.clone();
+                    move || {
+                        Worker::new(ith, rt, queue).block_run();
+                    }
+                })
+                .expect("Spawn worker thread error.");
+        }
+
         Self {
-            rt: Arc::new(Runtime::new()),
+            rt,
             _marker: PhantomData,
         }
     }
@@ -89,17 +86,12 @@ impl<'a> Executor<'a> {
         task
     }
 
-    pub async fn working(&self, id: usize) {
-        Worker::new(id, &self.rt).run().await;
-    }
-
     #[inline]
     pub fn schedule(&self) -> impl Fn(Runnable) + Send + Sync + 'static {
         let rt = self.rt.clone();
 
         move |runnable| {
             rt.global_queue.push(runnable).unwrap();
-            rt.notify();
         }
     }
 }
@@ -113,6 +105,10 @@ impl Drop for Executor<'_> {
         drop(tasks);
 
         while self.rt.global_queue.pop().is_ok() {}
+
+        for queue in self.rt.local_queues.iter() {
+            while queue.pop().is_ok() {}
+        }
     }
 }
 
@@ -121,208 +117,96 @@ pub struct Runtime {
     /// Global queue, all task will be sceduled in it.
     global_queue: ConcurrentQueue<Runnable>,
     /// All worker's queues.
-    local_queues: RwLock<Vec<Arc<ConcurrentQueue<Runnable>>>>,
+    local_queues: Vec<Arc<ConcurrentQueue<Runnable>>>,
     /// If a new task is scheduled.
-    searching: AtomicBool,
-    /// Sleeping Worker's wakers.
-    waiters: Mutex<Waiters>,
+    searching: Mutex<()>,
     /// All task's waker.
     tasks: Mutex<Slab<Waker>>,
 }
+
+const LOCAL_QUEUE_SIZE: usize = 512;
 
 impl Runtime {
     pub fn new() -> Self {
         Self {
             global_queue: ConcurrentQueue::unbounded(),
-            local_queues: RwLock::new(Vec::new()),
-            searching: AtomicBool::new(true),
-            waiters: Mutex::new(Waiters::new()),
+            local_queues: vec![
+                Arc::new(ConcurrentQueue::bounded(LOCAL_QUEUE_SIZE));
+                num_cpus::get()
+            ],
+            searching: Mutex::new(()),
             tasks: Mutex::new(Slab::new()),
         }
     }
-
-    pub fn notify(&self) {
-        match self
-            .searching
-            .compare_exchange(false, true, AcqRel, Acquire)
-        {
-            // no worker is searching
-            Ok(_) => {
-                // println!("searching: false");
-                if let Some(waker) = self.waiters.lock().unwrap().search() {
-                    waker.wake();
-                }
-            }
-            // already have a worker is searching
-            Err(_) => {
-                // println!("searching: true");
-            }
-        }
-    }
 }
-
-pub struct Waiters {
-    len: usize,
-    wakers: Vec<(usize, Waker)>,
-    free_ids: Vec<usize>,
-}
-
-impl Waiters {
-    pub fn new() -> Self {
-        Self {
-            len: 0,
-            wakers: Vec::new(),
-            free_ids: Vec::new(),
-        }
-    }
-
-    /// Register a waker and return its id.
-    pub fn insert(&mut self, waker: &Waker) -> usize {
-        self.len += 1;
-        let id = self.free_ids.pop().unwrap_or(self.len);
-        self.wakers.push((id, waker.clone()));
-        id
-    }
-
-    /// Re-insert a waker if it was waked.
-    ///
-    /// use `clone_from` to update the waker if it was not waked.
-    ///
-    /// Returns `true` if the waker was waked.
-    ///
-    /// Returns `false` if the waker is still in the wakers list.
-    pub fn update(&mut self, id: usize, waker: &Waker) -> bool {
-        for (cur_id, cur_waker) in self.wakers.iter_mut() {
-            if *cur_id == id {
-                cur_waker.clone_from(waker);
-                return false;
-            }
-        }
-
-        self.wakers.push((id, waker.clone()));
-        true
-    }
-
-    /// Deregister a id whether it is waked or not.
-    ///
-    /// Returns `true` if the waker is the searching worker.
-    ///
-    /// Returns `false` if the waker was still sleeping.
-    pub fn remove(&mut self, id: usize) -> bool {
-        self.len -= 1;
-        self.free_ids.push(id);
-
-        for i in (0..self.wakers.len()).rev() {
-            if self.wakers[i].0 == id {
-                self.wakers.remove(i);
-                // self.wakers.swap_remove(i);
-                return false;
-            }
-        }
-        true
-    }
-
-    /// There is max one waker will at waked state at any time.
-    ///
-    /// Return true if there is a waker was waked.
-    #[inline]
-    pub fn is_searching(&self) -> bool {
-        self.len == 0 || self.len > self.wakers.len()
-    }
-
-    /// Reture a waker if there is one and not `is_waked`.
-    ///
-    /// Note that the waker is just remove from the wakers list,
-    /// should call `remove` to deregister it.
-    pub fn search(&mut self) -> Option<Waker> {
-        if self.wakers.len() == self.len {
-            self.wakers.pop().map(|(_, waker)| waker)
-        } else {
-            None
-        }
-    }
-}
-
-const LOCAL_QUEUE_SIZE: usize = 512;
 
 /// single thread worker
-pub struct Worker<'a> {
+pub struct Worker {
     /// The worker's unique id.
     id: usize,
     /// The runtime.
-    rt: &'a Runtime,
+    rt: Arc<Runtime>,
     /// The worker's task queue.
     queue: Arc<ConcurrentQueue<Runnable>>,
     /// When 0,the worker is working, when >0, the worker is sleeping.
-    sleeping: AtomicUsize,
+    searching: AtomicBool,
     /// The times this worker polls.
     ticks: AtomicUsize,
 }
 
-impl<'a> Worker<'a> {
-    pub fn new(id: usize, rt: &'a Runtime) -> Self {
-        let runner = Self {
+impl Worker {
+    pub fn new(id: usize, rt: Arc<Runtime>, queue: Arc<ConcurrentQueue<Runnable>>) -> Self {
+        Self {
             id,
             rt,
-            queue: Arc::new(ConcurrentQueue::bounded(LOCAL_QUEUE_SIZE)),
-            sleeping: AtomicUsize::new(0),
+            queue,
+            searching: AtomicBool::new(true),
             ticks: AtomicUsize::new(0),
-        };
-
-        rt.local_queues.write().unwrap().push(runner.queue.clone());
-
-        runner
+        }
     }
 
     pub fn block_run(&self) {
-        use crate::executor::block_on::block_on;
-        block_on(async { self.run().await });
-    }
-
-    pub async fn run(&self) {
         loop {
-            let runnable = self.next().await;
+            let runnable = self.next();
             // println!("{} run", self.id);
             runnable.run();
         }
     }
 
-    pub async fn next(&self) -> Runnable {
-        let runnable = self
-            .next_by(|| {
-                // Get tast from self queue.
+    pub fn next(&self) -> Runnable {
+        let runnable = self.next_by(|| {
+            // Get tast from self queue.
+            if let Ok(r) = self.queue.pop() {
+                return Some(r);
+            }
+
+            // Get task from global_queue.
+            if let Ok(r) = self.rt.global_queue.pop() {
+                // println!("{} try", self.id);
+                steal(&self.rt.global_queue, &self.queue);
+                return Some(r);
+            }
+
+            // Get task from other workers.
+            let local_queues = &self.rt.local_queues;
+
+            let n = local_queues.len();
+            let froms = local_queues
+                .iter()
+                .chain(local_queues.iter())
+                .skip(self.id)
+                .take(n)
+                .filter(|from| Arc::ptr_eq(from, &self.queue));
+
+            for from in froms {
+                steal(from, &self.queue);
                 if let Ok(r) = self.queue.pop() {
                     return Some(r);
                 }
+            }
 
-                // Get task from global_queue.
-                if let Ok(r) = self.rt.global_queue.pop() {
-                    // println!("{} try", self.id);
-                    steal(&self.rt.global_queue, &self.queue);
-                    return Some(r);
-                }
-
-                // Get task from other workers.
-                let local_queues = self.rt.local_queues.read().unwrap();
-
-                let n = local_queues.len();
-                let froms = local_queues
-                    .iter()
-                    .chain(local_queues.iter())
-                    .skip(self.id)
-                    .take(n)
-                    .filter(|from| Arc::ptr_eq(from, &self.queue));
-
-                for from in froms {
-                    steal(from, &self.queue);
-                    if let Ok(r) = self.queue.pop() {
-                        return Some(r);
-                    }
-                }
-
-                None
-            })
-            .await;
+            None
+        });
 
         let ticks = self.ticks.fetch_add(1, AcqRel);
         if ticks % 128 == 0 {
@@ -332,98 +216,22 @@ impl<'a> Worker<'a> {
         runnable
     }
 
-    pub async fn next_by(&self, mut search: impl FnMut() -> Option<Runnable>) -> Runnable {
-        poll_fn(|cx| loop {
+    pub fn next_by(&self, mut search: impl FnMut() -> Option<Runnable>) -> Runnable {
+        self.searching.store(true, Release);
+        loop {
+            let mut _token = None;
+            if self.searching.load(Acquire) == false {
+                _token = Some(self.rt.searching.lock().unwrap());
+            }
             match search() {
                 Some(r) => {
-                    // This worker have tasks to run.
-                    self.wake();
-
-                    // Wake up a other worker.
-                    self.rt.notify();
-
-                    return Poll::Ready(r);
+                    return r;
                 }
                 None => {
                     // Should sleep.
-                    if !self.sleep(cx.waker()) {
-                        return Poll::Pending;
-                    }
+                    self.searching.store(false, Release);
                 }
             }
-        })
-        .await
-    }
-
-    /// `true` means it should keep running.
-    /// * The worker is just searching.
-    /// * The worker is being woken.
-    ///
-    /// `false` means it is not the searching worker, and should sleep.
-    pub fn sleep(&self, waker: &Waker) -> bool {
-        let mut waiters = self.rt.waiters.lock().unwrap();
-
-        match self.sleeping.load(Acquire) {
-            // The worker was not sleeping,
-            // register it.
-            0 => {
-                self.sleeping.store(waiters.insert(waker), Release);
-            }
-            // The worker was sleeping.
-            id => {
-                // True means the waker was pop by `Waiter::wake`,
-                // false means there was some wrong, should sleep again.
-                if !waiters.update(id, waker) {
-                    return false;
-                }
-            }
-        }
-
-        self.rt.searching.swap(waiters.is_searching(), AcqRel);
-
-        true
-    }
-
-    /// Rerun the worker.
-    pub fn wake(&self) {
-        let id = self.sleeping.swap(0, AcqRel);
-        if id != 0 {
-            let mut waiters = self.rt.waiters.lock().unwrap();
-            waiters.remove(id);
-
-            self.rt.searching.swap(waiters.is_searching(), AcqRel);
-        }
-    }
-}
-
-impl Drop for Worker<'_> {
-    fn drop(&mut self) {
-        // Remove the worker form the waiters list.
-        let id = self.sleeping.swap(0, AcqRel);
-        if id != 0 {
-            let mut waiters = self.rt.waiters.lock().unwrap();
-            let searching = waiters.remove(id);
-
-            self.rt.searching.swap(waiters.is_searching(), AcqRel);
-
-            // If self was the searching worker, wake up a other worker.
-            if searching {
-                drop(waiters);
-                self.rt.notify();
-            }
-        }
-
-        // Remove the worker's queue and reschedule all tasks to the globle_queue.
-        self.queue.close();
-
-        self.rt
-            .local_queues
-            .write()
-            .unwrap()
-            .retain(|q| !Arc::ptr_eq(q, &self.queue));
-
-        while let Ok(r) = self.queue.pop() {
-            r.schedule();
         }
     }
 }

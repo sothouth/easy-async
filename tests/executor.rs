@@ -10,7 +10,7 @@ fn smol_spawn() {
 #[test]
 fn spawn() {
     use easy_async::block_on;
-    use easy_async::executor::executor::spawn;
+    use easy_async::executor::smol_like_executor::spawn;
     // use smol::block_on;
 
     assert_eq!(block_on(spawn(async { "hello" })), "hello");
@@ -43,7 +43,7 @@ fn block_on_fib() {
 #[test]
 fn spawn_fib() {
     use easy_async::block_on;
-    use easy_async::executor::executor::spawn;
+    use easy_async::executor::smol_like_executor::spawn;
     // use smol::block_on;
 
     assert_eq!(block_on(spawn(async_fib(20))), fib(20));
@@ -60,7 +60,7 @@ fn smol_spawn_fib() {
 
 #[test]
 fn many_async() {
-    use easy_async::executor::executor::spawn;
+    use easy_async::executor::smol_like_executor::spawn;
     // use smol::spawn;
     use easy_async::block_on;
     // use smol::block_on;
@@ -108,7 +108,7 @@ fn smol_many_async() {
 
 #[test]
 fn lock_worker_many_async() {
-    use easy_async::executor::lock_worker_executor::spawn;
+    use easy_async::executor::executor::spawn;
     // use smol::spawn;
     use easy_async::block_on;
     // use smol::block_on;
