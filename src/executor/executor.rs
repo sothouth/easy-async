@@ -132,10 +132,9 @@ impl Runtime {
     pub fn new() -> Self {
         Self {
             global_queue: ConcurrentQueue::unbounded(),
-            local_queues: vec![
-                Arc::new(ConcurrentQueue::bounded(LOCAL_QUEUE_SIZE));
-                num_cpus::get()
-            ],
+            local_queues: (0..num_cpus::get())
+                .map(|_| Arc::new(ConcurrentQueue::bounded(LOCAL_QUEUE_SIZE)))
+                .collect(),
             searching: Mutex::new(()),
             tasks: Mutex::new(Slab::new()),
         }
@@ -184,7 +183,6 @@ impl Worker {
 
             // Get task from global_queue.
             if let Ok(r) = self.rt.global_queue.pop() {
-                // println!("{} try", self.id);
                 steal(&self.rt.global_queue, &self.queue);
                 return Some(r);
             }
@@ -196,9 +194,8 @@ impl Worker {
             let froms = local_queues
                 .iter()
                 .chain(local_queues.iter())
-                .skip(self.id)
-                .take(n)
-                .filter(|from| Arc::ptr_eq(from, &self.queue));
+                .skip(self.id + 1)
+                .take(n - 1);
 
             for from in froms {
                 steal(from, &self.queue);
@@ -241,7 +238,9 @@ impl Worker {
 fn steal<T>(src: &ConcurrentQueue<T>, dst: &ConcurrentQueue<T>) {
     for _ in 0..((src.len() + 1) / 2).min(dst.capacity().unwrap() - dst.len()) {
         match src.pop() {
-            Ok(r) => assert!(dst.push(r).is_ok()),
+            Ok(r) => {
+                assert!(dst.push(r).is_ok());
+            }
             Err(_) => break,
         }
     }
