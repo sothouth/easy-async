@@ -11,7 +11,6 @@ use concurrent_queue::ConcurrentQueue;
 use slab::Slab;
 
 use async_task::{Builder as TaskBuilder, Runnable, Task};
-use async_lock::OnceCell;
 
 use crate::utils::call_on_drop::CallOnDrop;
 use crate::waker::OptionWaker;
@@ -32,10 +31,9 @@ pub fn spawn<T: Send + 'static>(future: impl Future<Output = T> + Send + 'static
                         while GLOBAL.get().is_none() {
                             thread::yield_now();
                         }
-
                         let ex = GLOBAL.get().unwrap();
 
-                        crate::block_on(async { ex.working(ith).await });
+                        crate::block_on(ex.working(ith));
                     })
                     .expect("spawn worker thread error");
             }
@@ -96,6 +94,7 @@ impl<'a> Executor<'a> {
 
         loop {
             let runnable = worker.next().await;
+            println!("worker {} run", id);
             runnable.run();
         }
     }
