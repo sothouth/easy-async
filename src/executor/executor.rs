@@ -131,7 +131,7 @@ pub struct Runtime {
     /// If a new task is scheduled.
     new_task: AtomicBool,
     /// Sleeping Worker's wakers.
-    wakers: Mutex<Vec<OptionWaker>>,
+    wakers: Mutex<Waiters>,
     /// All task's waker.
     tasks: Mutex<Slab<Waker>>,
 }
@@ -142,7 +142,7 @@ impl Runtime {
             global_queue: ConcurrentQueue::unbounded(),
             local_queues: RwLock::new(Vec::new()),
             new_task: AtomicBool::new(true),
-            wakers: Mutex::new(Vec::new()),
+            wakers: Mutex::new(Waiters::new()),
             tasks: Mutex::new(Slab::new()),
         }
     }
@@ -151,57 +151,92 @@ impl Runtime {
         match self.new_task.compare_exchange(false, true, AcqRel, Acquire) {
             // no new task
             Ok(_) => {
-                if 
-                for waker in self.wakers.lock().unwrap().iter(){
-
+                if let Some(waker) = self.wakers.lock().unwrap().wake() {
+                    waker.wake();
                 }
-            },
+            }
             // already have new task
             Err(_) => {}
         }
     }
 }
 
-pub struct Waiters{
-    len:usize,
-    wakers:Vec<(usize,Waker)>,
-    free_ids:Vec<usize>,
+pub struct Waiters {
+    len: usize,
+    wakers: Vec<(usize, Waker)>,
+    free_ids: Vec<usize>,
 }
 
-impl Waiters{
-    pub fn new() -> Self{
-        Self{
-            len:0,
-            wakers:Vec::new(),
-            free_ids:Vec::new(),
+impl Waiters {
+    pub fn new() -> Self {
+        Self {
+            len: 0,
+            wakers: Vec::new(),
+            free_ids: Vec::new(),
         }
     }
 
-    pub fn push(&mut self, waker:&Waker)->usize{
+    /// Register a waker and return its id.
+    pub fn insert(&mut self, waker: &Waker) -> usize {
         let id = self.free_ids.pop().unwrap_or(self.len);
-        self.len+=1;
-        self.wakers.push((id,waker.clone()));
+        self.len += 1;
+        self.wakers.push((id, waker.clone()));
         id
     }
 
-    pub fn update(&mut self, id:usize, waker:&Waker)->bool{
-        for (cur_id,cur_waker) in self.wakers.iter_mut(){
-            if *cur_id == id{
+    /// Re-insert a waker if it was waked.
+    ///
+    /// use `clone_from` to update the waker if it was not waked.
+    ///
+    /// Returns `true` if the waker was waked.
+    pub fn update(&mut self, id: usize, waker: &Waker) -> bool {
+        for (cur_id, cur_waker) in self.wakers.iter_mut() {
+            if *cur_id == id {
                 cur_waker.clone_from(waker);
                 return false;
             }
         }
 
-        self.wakers.push((id,waker.clone()));
+        self.wakers.push((id, waker.clone()));
         true
     }
 
-    pub fn remove(&mut self, id:usize){
-        for (cur_id,cur_waker) in self.wakers.iter_mut(){
-            if *cur_id == id{
-                self.free_ids.push(id);
-                return;
+    /// Deregister a id whether it is waked or not.
+    ///
+    /// Returns `true` if the waker was waked.
+    ///
+    /// Returns `false` if the waker was not waked.
+    pub fn remove(&mut self, id: usize) -> bool {
+        self.len -= 1;
+        self.free_ids.push(id);
+
+        for i in (0..self.wakers.len()).rev() {
+            if self.wakers[i].0 == id {
+                // self.wakers.remove(i);
+                self.wakers.swap_remove(i);
+                return false;
             }
+        }
+        true
+    }
+
+    /// There is max one waker will at waked state at any time.
+    ///
+    /// Return true if there is a waker was waked.
+    #[inline]
+    pub fn is_waked(&self) -> bool {
+        self.len == 0 || self.len > self.wakers.len()
+    }
+
+    /// Reture a waker if there is one and not `is_waked`.
+    ///
+    /// Note that the waker is just remove from the wakers list,
+    /// you should call `remove` to deregister it.
+    pub fn wake(&mut self) -> Option<Waker> {
+        if self.wakers.len() == self.len {
+            self.wakers.pop().map(|(_, waker)| waker)
+        } else {
+            None
         }
     }
 }
@@ -220,6 +255,8 @@ pub struct Worker<'a> {
     sleeping: AtomicUsize,
     /// The times this worker polls.
     ticks: AtomicUsize,
+    /// Next steal worker.
+    next: AtomicUsize,
 }
 
 impl<'a> Worker<'a> {
@@ -234,6 +271,7 @@ impl<'a> Worker<'a> {
             queue,
             sleeping: AtomicUsize::new(0),
             ticks: AtomicUsize::new(0),
+            next: AtomicUsize::new(id),
         }
     }
 
@@ -262,6 +300,8 @@ impl<'a> Worker<'a> {
             Poll::Pending
         })
         .await;
+
+        runnable
     }
 
     pub async fn next_by(&self, mut search: impl FnMut() -> Option<Runnable>) -> Runnable {
@@ -277,6 +317,27 @@ impl<'a> Worker<'a> {
             }
         })
         .await
+    }
+
+    pub fn sleep(&self, waker: &Waker) -> bool {
+        let mut waiters = self.rt.wakers.lock().unwrap();
+
+        match self.sleeping.load(Acquire) {
+            0 => {
+                self.sleeping.store(waiters.insert(waker), Release);
+            }
+            id => {
+                // True means the waker was pop by `Waiter::wake`,
+                // false means the worker 
+                if !waiters.update(id, waker) {
+                    return false;
+                }
+            }
+        }
+
+        self.rt.new_task.store(waiters.is_waked(), Release);
+
+        true
     }
 }
 
