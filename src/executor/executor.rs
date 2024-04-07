@@ -92,7 +92,6 @@ impl<'a> Executor<'a> {
 
     pub async fn working(&self, id: usize) {
         let worker = Worker::new(id, &self.rt);
-        self.rt.wakers.lock().unwrap().push(OptionWaker::new());
 
         loop {
             let runnable = worker.next().await;
@@ -129,9 +128,9 @@ pub struct Runtime {
     /// All worker's queues.
     local_queues: RwLock<Vec<Arc<ConcurrentQueue<Runnable>>>>,
     /// If a new task is scheduled.
-    new_task: AtomicBool,
+    searching: AtomicBool,
     /// Sleeping Worker's wakers.
-    wakers: Mutex<Waiters>,
+    waiters: Mutex<Waiters>,
     /// All task's waker.
     tasks: Mutex<Slab<Waker>>,
 }
@@ -141,21 +140,24 @@ impl Runtime {
         Self {
             global_queue: ConcurrentQueue::unbounded(),
             local_queues: RwLock::new(Vec::new()),
-            new_task: AtomicBool::new(true),
-            wakers: Mutex::new(Waiters::new()),
+            searching: AtomicBool::new(true),
+            waiters: Mutex::new(Waiters::new()),
             tasks: Mutex::new(Slab::new()),
         }
     }
 
     pub fn notify(&self) {
-        match self.new_task.compare_exchange(false, true, AcqRel, Acquire) {
-            // no new task
+        match self
+            .searching
+            .compare_exchange(false, true, AcqRel, Acquire)
+        {
+            // no worker is searching
             Ok(_) => {
-                if let Some(waker) = self.wakers.lock().unwrap().wake() {
+                if let Some(waker) = self.waiters.lock().unwrap().wake() {
                     waker.wake();
                 }
             }
-            // already have new task
+            // already have a worker is searching
             Err(_) => {}
         }
     }
@@ -189,6 +191,8 @@ impl Waiters {
     /// use `clone_from` to update the waker if it was not waked.
     ///
     /// Returns `true` if the waker was waked.
+    ///
+    /// Returns `false` if the waker is still in the wakers list.
     pub fn update(&mut self, id: usize, waker: &Waker) -> bool {
         for (cur_id, cur_waker) in self.wakers.iter_mut() {
             if *cur_id == id {
@@ -203,9 +207,9 @@ impl Waiters {
 
     /// Deregister a id whether it is waked or not.
     ///
-    /// Returns `true` if the waker was waked.
+    /// Returns `true` if the waker is the searching worker.
     ///
-    /// Returns `false` if the waker was not waked.
+    /// Returns `false` if the waker was still sleeping.
     pub fn remove(&mut self, id: usize) -> bool {
         self.len -= 1;
         self.free_ids.push(id);
@@ -231,7 +235,7 @@ impl Waiters {
     /// Reture a waker if there is one and not `is_waked`.
     ///
     /// Note that the waker is just remove from the wakers list,
-    /// you should call `remove` to deregister it.
+    /// should call `remove` to deregister it.
     pub fn wake(&mut self) -> Option<Waker> {
         if self.wakers.len() == self.len {
             self.wakers.pop().map(|(_, waker)| waker)
@@ -288,18 +292,36 @@ impl<'a> Worker<'a> {
     }
 
     pub async fn next(&self) -> Runnable {
-        let runnable = poll_fn(|cx| {
-            if let Ok(r) = self.queue.pop() {
-                return Poll::Ready(r);
-            }
+        let runnable = self
+            .next_by(|| {
+                // Get tast from self queue.
+                if let Ok(r) = self.queue.pop() {
+                    return Some(r);
+                }
 
-            if let Ok(r) = self.rt.global_queue.pop() {
-                return Poll::Ready(r);
-            }
+                // Get task from global_queue.
+                if let Ok(r) = self.rt.global_queue.pop() {
+                    steal(&self.rt.global_queue, &self.queue);
+                    return Some(r);
+                }
 
-            Poll::Pending
-        })
-        .await;
+                // Get task from other workers.
+                let local_queues = self.rt.local_queues.read().unwrap();
+                let n = local_queues.len();
+
+                let mut from = self.id + 1;
+
+                while from != self.id {
+                    steal(&local_queues[from], &self.queue);
+                    if let Ok(r) = self.queue.pop() {
+                        return Some(r);
+                    }
+                    from = (from + 1) % n;
+                }
+
+                None
+            })
+            .await;
 
         runnable
     }
@@ -308,41 +330,84 @@ impl<'a> Worker<'a> {
         poll_fn(|cx| loop {
             match search() {
                 Some(r) => {
+                    // This worker have tasks to run.
                     self.wake();
+
+                    // Wake up a other worker.
+                    self.rt.notify();
+
                     return Poll::Ready(r);
                 }
                 None => {
-                    return Poll::Pending;
+                    // Should sleep.
+                    if !self.sleep(cx.waker()) {
+                        return Poll::Pending;
+                    }
                 }
             }
         })
         .await
     }
 
+    /// `true` means it should keep running.
+    /// * The worker is just searching.
+    /// * The worker is being woken.
+    ///
+    /// `false` means it is not the searching worker, and should sleep.
     pub fn sleep(&self, waker: &Waker) -> bool {
-        let mut waiters = self.rt.wakers.lock().unwrap();
+        let mut waiters = self.rt.waiters.lock().unwrap();
 
         match self.sleeping.load(Acquire) {
+            // The worker was not sleeping,
+            // register it.
             0 => {
                 self.sleeping.store(waiters.insert(waker), Release);
             }
+            // The worker was sleeping.
             id => {
                 // True means the waker was pop by `Waiter::wake`,
-                // false means the worker 
+                // false means there was some wrong, should sleep again.
                 if !waiters.update(id, waker) {
                     return false;
                 }
             }
         }
 
-        self.rt.new_task.store(waiters.is_waked(), Release);
+        self.rt.searching.store(waiters.is_waked(), Release);
 
         true
+    }
+
+    /// Rerun the worker.
+    pub fn wake(&self) {
+        let id = self.sleeping.swap(0, AcqRel);
+        if id != 0 {
+            let mut waiters = self.rt.waiters.lock().unwrap();
+            waiters.remove(id);
+
+            self.rt.searching.swap(waiters.is_waked(), Release);
+        }
     }
 }
 
 impl Drop for Worker<'_> {
     fn drop(&mut self) {
+        // Remove the worker form the waiters list.
+        let id = self.sleeping.swap(0, AcqRel);
+        if id != 0 {
+            let mut waiters = self.rt.waiters.lock().unwrap();
+            let searching = waiters.remove(id);
+
+            self.rt.searching.swap(waiters.is_waked(), Release);
+
+            // If self was the searching worker, wake up a other worker.
+            if searching {
+                drop(waiters);
+                self.rt.notify();
+            }
+        }
+
+        // Remove the worker's queue and reschedule all tasks to the globle_queue.
         self.queue.close();
 
         self.rt
