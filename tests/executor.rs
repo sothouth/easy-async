@@ -67,7 +67,7 @@ fn many_async() {
 
     use easy_async::utils::pending_n::PendingN;
 
-    const NUM: usize = 100;
+    const NUM: usize = 10000;
     const TO: usize = 100;
     let mut tasks = Vec::with_capacity(NUM);
 
@@ -91,7 +91,7 @@ fn smol_many_async() {
 
     use easy_async::utils::pending_n::PendingN;
 
-    const NUM: usize = 100;
+    const NUM: usize = 10000;
     const TO: usize = 100;
     let mut tasks = Vec::with_capacity(NUM);
 
@@ -115,7 +115,7 @@ fn lock_worker_many_async() {
 
     use easy_async::utils::pending_n::PendingN;
 
-    const NUM: usize = 100;
+    const NUM: usize = 10000;
     const TO: usize = 100;
     let mut tasks = Vec::with_capacity(NUM);
 

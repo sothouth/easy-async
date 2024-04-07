@@ -2,6 +2,7 @@
 //! * Cancel the use of asynchrony at the executor level.
 //! * Generate runtime using a top-down construction approach.
 //! * Removed the Sleepers mechanism with high consumption and used a simple Mutex to ensure low concurrency.
+//! * Cancel random searching start, use fixed by id.
 use std::cell::UnsafeCell;
 use std::future::Future;
 use std::marker::PhantomData;
@@ -38,6 +39,7 @@ impl<'a> Executor<'a> {
     pub fn new() -> Self {
         let rt = Arc::new(Runtime::new());
 
+        // spawn workers fixedly
         for (ith, queue) in rt.local_queues.iter().enumerate() {
             thread::Builder::new()
                 .name(format!("worker-{}", ith))
@@ -118,7 +120,7 @@ pub struct Runtime {
     global_queue: ConcurrentQueue<Runnable>,
     /// All worker's queues.
     local_queues: Vec<Arc<ConcurrentQueue<Runnable>>>,
-    /// If a new task is scheduled.
+    /// Keep at most one worker in a loop search with None as the answer.
     searching: Mutex<()>,
     /// All task's waker.
     tasks: Mutex<Slab<Waker>>,
@@ -148,7 +150,7 @@ pub struct Worker {
     rt: Arc<Runtime>,
     /// The worker's task queue.
     queue: Arc<ConcurrentQueue<Runnable>>,
-    /// When 0,the worker is working, when >0, the worker is sleeping.
+    /// If true, the worker can loop search with None as the answer.
     searching: AtomicBool,
     /// The times this worker polls.
     ticks: AtomicUsize,
