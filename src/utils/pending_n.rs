@@ -17,7 +17,7 @@ impl Future for PendingN {
     type Output = ();
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        println!("PendingN: {} to {}", self.cur, self.num);
+        // println!("PendingN: {} to {}", self.cur, self.num);
         if self.cur == self.num {
             Poll::Ready(())
         } else {

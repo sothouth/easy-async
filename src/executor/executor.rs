@@ -90,13 +90,7 @@ impl<'a> Executor<'a> {
     }
 
     pub async fn working(&self, id: usize) {
-        let worker = Worker::new(id, &self.rt);
-
-        loop {
-            let runnable = worker.next().await;
-            println!("worker {} run", id);
-            runnable.run();
-        }
+        Worker::new(id, &self.rt).run().await;
     }
 
     #[inline]
@@ -154,12 +148,15 @@ impl Runtime {
         {
             // no worker is searching
             Ok(_) => {
-                if let Some(waker) = self.waiters.lock().unwrap().wake() {
+                // println!("searching: false");
+                if let Some(waker) = self.waiters.lock().unwrap().search() {
                     waker.wake();
                 }
             }
             // already have a worker is searching
-            Err(_) => {}
+            Err(_) => {
+                // println!("searching: true");
+            }
         }
     }
 }
@@ -181,8 +178,8 @@ impl Waiters {
 
     /// Register a waker and return its id.
     pub fn insert(&mut self, waker: &Waker) -> usize {
-        let id = self.free_ids.pop().unwrap_or(self.len);
         self.len += 1;
+        let id = self.free_ids.pop().unwrap_or(self.len);
         self.wakers.push((id, waker.clone()));
         id
     }
@@ -229,7 +226,7 @@ impl Waiters {
     ///
     /// Return true if there is a waker was waked.
     #[inline]
-    pub fn is_waked(&self) -> bool {
+    pub fn is_searching(&self) -> bool {
         self.len == 0 || self.len > self.wakers.len()
     }
 
@@ -237,7 +234,7 @@ impl Waiters {
     ///
     /// Note that the waker is just remove from the wakers list,
     /// should call `remove` to deregister it.
-    pub fn wake(&mut self) -> Option<Waker> {
+    pub fn search(&mut self) -> Option<Waker> {
         if self.wakers.len() == self.len {
             self.wakers.pop().map(|(_, waker)| waker)
         } else {
@@ -260,24 +257,21 @@ pub struct Worker<'a> {
     sleeping: AtomicUsize,
     /// The times this worker polls.
     ticks: AtomicUsize,
-    /// Next steal worker.
-    next: AtomicUsize,
 }
 
 impl<'a> Worker<'a> {
     pub fn new(id: usize, rt: &'a Runtime) -> Self {
-        let queue = Arc::new(ConcurrentQueue::bounded(LOCAL_QUEUE_SIZE));
-
-        rt.local_queues.write().unwrap().push(queue.clone());
-
-        Self {
+        let runner = Self {
             id,
             rt,
-            queue,
+            queue: Arc::new(ConcurrentQueue::bounded(LOCAL_QUEUE_SIZE)),
             sleeping: AtomicUsize::new(0),
             ticks: AtomicUsize::new(0),
-            next: AtomicUsize::new(id),
-        }
+        };
+
+        rt.local_queues.write().unwrap().push(runner.queue.clone());
+
+        runner
     }
 
     pub fn block_run(&self) {
@@ -288,6 +282,7 @@ impl<'a> Worker<'a> {
     pub async fn run(&self) {
         loop {
             let runnable = self.next().await;
+            // println!("{} run", self.id);
             runnable.run();
         }
     }
@@ -302,22 +297,27 @@ impl<'a> Worker<'a> {
 
                 // Get task from global_queue.
                 if let Ok(r) = self.rt.global_queue.pop() {
+                    // println!("{} try", self.id);
                     steal(&self.rt.global_queue, &self.queue);
                     return Some(r);
                 }
 
                 // Get task from other workers.
                 let local_queues = self.rt.local_queues.read().unwrap();
+
                 let n = local_queues.len();
+                let froms = local_queues
+                    .iter()
+                    .chain(local_queues.iter())
+                    .skip(self.id)
+                    .take(n)
+                    .filter(|from| Arc::ptr_eq(from, &self.queue));
 
-                let mut from = (self.id + 1) % n;
-
-                while from != self.id {
-                    steal(&local_queues[from], &self.queue);
+                for from in froms {
+                    steal(from, &self.queue);
                     if let Ok(r) = self.queue.pop() {
                         return Some(r);
                     }
-                    from = (from + 1) % n;
                 }
 
                 None
@@ -379,7 +379,7 @@ impl<'a> Worker<'a> {
             }
         }
 
-        self.rt.searching.store(waiters.is_waked(), Release);
+        self.rt.searching.swap(waiters.is_searching(), AcqRel);
 
         true
     }
@@ -391,7 +391,7 @@ impl<'a> Worker<'a> {
             let mut waiters = self.rt.waiters.lock().unwrap();
             waiters.remove(id);
 
-            self.rt.searching.swap(waiters.is_waked(), Release);
+            self.rt.searching.swap(waiters.is_searching(), AcqRel);
         }
     }
 }
@@ -404,7 +404,7 @@ impl Drop for Worker<'_> {
             let mut waiters = self.rt.waiters.lock().unwrap();
             let searching = waiters.remove(id);
 
-            self.rt.searching.swap(waiters.is_waked(), Release);
+            self.rt.searching.swap(waiters.is_searching(), AcqRel);
 
             // If self was the searching worker, wake up a other worker.
             if searching {
