@@ -11,6 +11,7 @@ use concurrent_queue::ConcurrentQueue;
 use slab::Slab;
 
 use async_task::{Builder as TaskBuilder, Runnable, Task};
+use async_lock::OnceCell;
 
 use crate::utils::call_on_drop::CallOnDrop;
 use crate::waker::OptionWaker;
@@ -105,6 +106,7 @@ impl<'a> Executor<'a> {
 
         move |runnable| {
             rt.global_queue.push(runnable).unwrap();
+            rt.notify();
         }
     }
 }
@@ -216,8 +218,8 @@ impl Waiters {
 
         for i in (0..self.wakers.len()).rev() {
             if self.wakers[i].0 == id {
-                // self.wakers.remove(i);
-                self.wakers.swap_remove(i);
+                self.wakers.remove(i);
+                // self.wakers.swap_remove(i);
                 return false;
             }
         }
@@ -309,7 +311,7 @@ impl<'a> Worker<'a> {
                 let local_queues = self.rt.local_queues.read().unwrap();
                 let n = local_queues.len();
 
-                let mut from = self.id + 1;
+                let mut from = (self.id + 1) % n;
 
                 while from != self.id {
                     steal(&local_queues[from], &self.queue);
@@ -322,6 +324,11 @@ impl<'a> Worker<'a> {
                 None
             })
             .await;
+
+        let ticks = self.ticks.fetch_add(1, AcqRel);
+        if ticks % 128 == 0 {
+            steal(&self.rt.global_queue, &self.queue);
+        }
 
         runnable
     }
