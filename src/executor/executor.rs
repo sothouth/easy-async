@@ -116,7 +116,7 @@ impl Drop for Executor<'_> {
     }
 }
 
-/// runtime core
+/// runtime shared core
 pub struct Runtime {
     /// Global queue, all task will be sceduled in it.
     global_queue: ConcurrentQueue<Runnable>,

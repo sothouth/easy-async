@@ -105,3 +105,27 @@ fn smol_many_async() {
     }
     println!("{}ms", start.elapsed().as_millis());
 }
+
+#[test]
+fn lock_worker_many_async() {
+    use easy_async::executor::lock_worker_executor::spawn;
+    // use smol::spawn;
+    use easy_async::block_on;
+    // use smol::block_on;
+
+    use easy_async::utils::pending_n::PendingN;
+
+    const NUM: usize = 100;
+    const TO: usize = 100;
+    let mut tasks = Vec::with_capacity(NUM);
+
+    let start = std::time::Instant::now();
+    for _ in 0..NUM {
+        tasks.push(spawn(PendingN::new(TO)));
+    }
+
+    for task in tasks {
+        block_on(task);
+    }
+    println!("{}ms", start.elapsed().as_millis());
+}
