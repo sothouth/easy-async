@@ -163,7 +163,7 @@ fn no_output_try() {
 
     use easy_async::utils::pending_n::PendingN;
 
-    const NUM: usize = 1;
+    const NUM: usize = 10;
     const TO: usize = 100;
     let mut tasks = Vec::with_capacity(NUM);
 

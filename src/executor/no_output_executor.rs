@@ -1,5 +1,8 @@
 //! No output executor
+//!
 //! Very fast
+//!
+//! In \tests\executor.rs: no_output_many_async 10 times faster than smol_many_async
 use std::cell::UnsafeCell;
 use std::future::Future;
 use std::marker::PhantomData;
@@ -160,7 +163,7 @@ impl TaskHandle {
         if queue != task.rt.local_queues.len() {
             if let Err(err) = task.rt.local_queues[queue].push(handle) {
                 let handle = err.into_inner();
-                debug_assert!(task.rt.global_queue.push(handle).is_ok());
+                assert!(task.rt.global_queue.push(handle).is_ok());
             }
         } else {
             debug_assert!(task.rt.global_queue.push(handle).is_ok());
@@ -342,7 +345,7 @@ impl Worker {
 
             // Get task from global_queue.
             if let Ok(t) = self.rt.global_queue.pop() {
-                steal(&self.rt.global_queue, &self.queue);
+                steal(&self.rt.global_queue, &self.queue, &self.rt.global_queue);
                 return Some(t);
             }
 
@@ -357,7 +360,7 @@ impl Worker {
                 .take(n - 1);
 
             for from in froms {
-                steal(from, &self.queue);
+                steal(from, &self.queue, &self.rt.global_queue);
                 if let Ok(t) = self.queue.pop() {
                     return Some(t);
                 }
@@ -367,9 +370,9 @@ impl Worker {
         });
 
         let ticks = self.ticks.fetch_add(1, AcqRel);
-        if ticks % 128 == 0 {
-            steal(&self.rt.global_queue, &self.queue);
-        }
+        // if ticks % 128 == 0 {
+        //     steal(&self.rt.global_queue, &self.queue, &self.rt.global_queue);
+        // }
 
         task
     }
@@ -394,11 +397,15 @@ impl Worker {
     }
 }
 
-fn steal<T>(src: &ConcurrentQueue<T>, dst: &ConcurrentQueue<T>) {
+fn steal<T>(src: &ConcurrentQueue<T>, dst: &ConcurrentQueue<T>, global: &ConcurrentQueue<T>) {
     for _ in 0..((src.len() + 1) / 2).min(dst.capacity().unwrap() - dst.len() - RESERVE_SIZE) {
         match src.pop() {
             Ok(r) => {
-                debug_assert!(dst.push(r).is_ok());
+                if let Err(task) = dst.push(r) {
+                    let task = task.into_inner();
+                    debug_assert!(global.push(task).is_ok());
+                    break;
+                }
             }
             Err(_) => break,
         }
