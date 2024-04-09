@@ -5,10 +5,8 @@
 //! In \tests\executor.rs: no_output_many_async 10 times faster than smol_many_async
 use std::cell::UnsafeCell;
 use std::future::Future;
-use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
-use std::pin::{pin, Pin};
-use std::ptr::{self, NonNull};
+use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::*};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
@@ -128,9 +126,19 @@ impl TaskHandle {
                 task.waker.wake();
             }
             Poll::Pending => {
-                task.state.store(SLEEPING, Release);
+                match task
+                    .state
+                    .compare_exchange(RUNNING, SLEEPING, AcqRel, Acquire)
+                {
+                    Ok(_) => {}
+                    Err(_) => {}
+                }
             }
         }
+    }
+
+    pub fn task(&self) -> &Arc<Task> {
+        &self.task
     }
 
     pub unsafe fn schedule(this: *const Task) {
@@ -163,7 +171,7 @@ impl TaskHandle {
         if queue != task.rt.local_queues.len() {
             if let Err(err) = task.rt.local_queues[queue].push(handle) {
                 let handle = err.into_inner();
-                assert!(task.rt.global_queue.push(handle).is_ok());
+                debug_assert!(task.rt.global_queue.push(handle).is_ok());
             }
         } else {
             debug_assert!(task.rt.global_queue.push(handle).is_ok());
@@ -174,10 +182,10 @@ impl TaskHandle {
 impl Future for TaskHandle {
     type Output = ();
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        self.task.waker.register(cx.waker());
         if self.task.state.load(Acquire) == COMPLETED {
             Poll::Ready(())
         } else {
+            self.task.waker.register(cx.waker());
             Poll::Pending
         }
     }
@@ -264,6 +272,10 @@ impl Executor {
         let (task, handle) = task_and_handle(future, &self.rt);
         task.schedule();
         handle
+    }
+
+    pub fn state(&self) -> usize {
+        self.rt.tasks.load(Acquire)
     }
 }
 
@@ -370,9 +382,10 @@ impl Worker {
         });
 
         let ticks = self.ticks.fetch_add(1, AcqRel);
-        // if ticks % 128 == 0 {
-        //     steal(&self.rt.global_queue, &self.queue, &self.rt.global_queue);
-        // }
+        if ticks % 512 == 0 {
+            // println!("{} {}", self.id, ticks);
+            steal(&self.rt.global_queue, &self.queue, &self.rt.global_queue);
+        }
 
         task
     }
@@ -400,10 +413,13 @@ impl Worker {
 fn steal<T>(src: &ConcurrentQueue<T>, dst: &ConcurrentQueue<T>, global: &ConcurrentQueue<T>) {
     for _ in 0..((src.len() + 1) / 2).min(dst.capacity().unwrap() - dst.len() - RESERVE_SIZE) {
         match src.pop() {
-            Ok(r) => {
-                if let Err(task) = dst.push(r) {
+            Ok(task) => {
+                if let Err(task) = dst.push(task) {
                     let task = task.into_inner();
-                    debug_assert!(global.push(task).is_ok());
+                    if let Err(task) = src.push(task) {
+                        let task = task.into_inner();
+                        debug_assert!(global.push(task).is_ok());
+                    }
                     break;
                 }
             }

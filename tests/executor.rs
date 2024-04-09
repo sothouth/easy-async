@@ -1,3 +1,5 @@
+use std::{io::Write, thread};
+
 #[test]
 fn smol_spawn() {
     use smol::spawn;
@@ -139,7 +141,7 @@ fn no_output_many_async() {
 
     use easy_async::utils::pending_n::PendingN;
 
-    // Bug: may stuck when task too many.
+
     const NUM: usize = 10000;
     const TO: usize = 100;
     let mut tasks = Vec::with_capacity(NUM);
