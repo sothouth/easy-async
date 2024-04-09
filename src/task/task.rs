@@ -1,6 +1,7 @@
 /// tring
 use std::future::{poll_fn, Future};
 use std::pin::{pin, Pin};
+use std::process::Output;
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicUsize, Ordering::*};
 use std::sync::OnceLock;
@@ -23,15 +24,20 @@ mod refer {
     use tokio::runtime::Handle;
 }
 
-// pub struct Task<T> {
-//     exe: Arc<Todo<T>>,
-// }
+pub struct Task {
+    fut: Pin<Box<dyn Future<Output = ()>>>,
+    state: AtomicUsize,
+    scheduler:Scheduler,
+}
+
+pub struct Scheduler {
+    local_queue: Option<Arc<ConcurrentQueue<Task>>>,
+    global_queue: Arc<ConcurrentQueue<Task>>,
+}
 
 // pub struct RawTask{
 
 // }
-
-
 
 // pub struct Task<T> {
 //     state: AtomicUsize,
@@ -43,7 +49,6 @@ mod refer {
 //     future: Pin<Box<dyn Future<Output=Any> + Send>>,
 //     output: Option<NonNull<()>>,
 // }
-
 
 // impl Todo{
 //     fn build<F,S>(future:F,schedule:S)->Todo{

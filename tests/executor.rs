@@ -73,7 +73,7 @@ fn many_async() {
 
     let start = std::time::Instant::now();
     for _ in 0..NUM {
-        tasks.push(spawn(PendingN::new(TO)));
+        tasks.push(spawn(PendingN::new(TO, false)));
     }
 
     for task in tasks {
@@ -97,7 +97,7 @@ fn smol_many_async() {
 
     let start = std::time::Instant::now();
     for _ in 0..NUM {
-        tasks.push(spawn(PendingN::new(TO)));
+        tasks.push(spawn(PendingN::new(TO, false)));
     }
 
     for task in tasks {
@@ -108,7 +108,7 @@ fn smol_many_async() {
 
 #[test]
 fn lock_worker_many_async() {
-    use easy_async::executor::executor::spawn;
+    use easy_async::executor::async_task_executor::spawn;
     // use smol::spawn;
     use easy_async::block_on;
     // use smol::block_on;
@@ -121,7 +121,55 @@ fn lock_worker_many_async() {
 
     let start = std::time::Instant::now();
     for _ in 0..NUM {
-        tasks.push(spawn(PendingN::new(TO)));
+        tasks.push(spawn(PendingN::new(TO, false)));
+    }
+
+    for task in tasks {
+        block_on(task);
+    }
+    println!("{}ms", start.elapsed().as_millis());
+}
+
+#[test]
+fn no_output_many_async() {
+    use easy_async::executor::no_output_executor::spawn;
+    // use smol::spawn;
+    use easy_async::block_on;
+    // use smol::block_on;
+
+    use easy_async::utils::pending_n::PendingN;
+
+    // Bug: may stuck when task too many.
+    const NUM: usize = 10000;
+    const TO: usize = 100;
+    let mut tasks = Vec::with_capacity(NUM);
+
+    let start = std::time::Instant::now();
+    for _ in 0..NUM {
+        tasks.push(spawn(PendingN::new(TO, false)));
+    }
+
+    for task in tasks {
+        block_on(task);
+    }
+    println!("{}ms", start.elapsed().as_millis());
+}
+
+#[test]
+fn no_output_try() {
+    use easy_async::block_on;
+    use easy_async::executor::no_output_executor::spawn;
+    // use smol::block_on;
+
+    use easy_async::utils::pending_n::PendingN;
+
+    const NUM: usize = 1;
+    const TO: usize = 100;
+    let mut tasks = Vec::with_capacity(NUM);
+
+    let start = std::time::Instant::now();
+    for _ in 0..NUM {
+        tasks.push(spawn(PendingN::new(TO, false)));
     }
 
     for task in tasks {

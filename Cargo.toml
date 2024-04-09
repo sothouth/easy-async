@@ -11,6 +11,7 @@ easy-parallel = { version = "*" }
 slab = { version = "*" }
 fastrand = { version = "*" }
 
+parking_lot = { version = "*" }
 
 futures-timer = { version = "*" }
 

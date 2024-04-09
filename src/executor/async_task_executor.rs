@@ -239,7 +239,7 @@ fn steal<T>(src: &ConcurrentQueue<T>, dst: &ConcurrentQueue<T>) {
     for _ in 0..((src.len() + 1) / 2).min(dst.capacity().unwrap() - dst.len()) {
         match src.pop() {
             Ok(r) => {
-                assert!(dst.push(r).is_ok());
+                debug_assert!(dst.push(r).is_ok());
             }
             Err(_) => break,
         }
