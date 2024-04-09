@@ -134,13 +134,13 @@ fn lock_worker_many_async() {
 
 #[test]
 fn no_output_many_async() {
+    use easy_async::executor::no_output_executor::complated;
     use easy_async::executor::no_output_executor::spawn;
     // use smol::spawn;
     use easy_async::block_on;
     // use smol::block_on;
 
     use easy_async::utils::pending_n::PendingN;
-
 
     const NUM: usize = 10000;
     const TO: usize = 100;
@@ -154,6 +154,7 @@ fn no_output_many_async() {
     for task in tasks {
         block_on(task);
     }
+    assert!(complated());
     println!("{}ms", start.elapsed().as_millis());
 }
 
