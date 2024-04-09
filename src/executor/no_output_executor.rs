@@ -1,7 +1,5 @@
 //! No output executor
 //!
-//! Very fast
-//!
 //! In \tests\executor.rs: no_output_many_async 10 times faster than smol_many_async
 use std::cell::UnsafeCell;
 use std::future::Future;
