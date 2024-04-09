@@ -3,5 +3,5 @@ use easy_async::utils::pending_n::PendingN;
 
 #[test]
 fn try_block_on() {
-    assert_eq!(block_on(PendingN::new(10)), ());
+    assert_eq!(block_on(PendingN::new(100, false)), ());
 }
