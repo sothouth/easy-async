@@ -25,7 +25,7 @@ impl<T> Bounded<T> {
         Self {
             head: AtomicUsize::new(0),
             tail: AtomicUsize::new(0),
-            buffer: vec![].into_boxed_slice(),
+            buffer: Vec::with_capacity(capacity).into_boxed_slice(),
         }
     }
 

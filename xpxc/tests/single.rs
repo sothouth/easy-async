@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use easy_parallel::Parallel;
 
-use easy_async::utils::xpxc::prelude::*;
+use xpxc::prelude::*;
 
 #[test]
 fn smoke() {

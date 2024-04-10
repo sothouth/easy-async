@@ -1,0 +1,10 @@
+[package]
+name = "xpxc"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+[dev-dependencies]
+easy-parallel = "3.*"
+fastrand = "2.*"

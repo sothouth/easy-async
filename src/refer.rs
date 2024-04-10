@@ -8,16 +8,14 @@ mod base {
     use futures_lite;
 }
 
-mod see{
+mod see {
     use futures_timer;
-    
 }
 
-mod wuse{
+mod wuse {
     use std::async_iter;
     use std::future::join;
 }
-
 
 use async_std;
 use async_std::{
@@ -32,12 +30,10 @@ use futures_lite;
 
 use std::future::poll_fn;
 
-use futures_lite::{
-    future
-};
+use futures_lite::future;
 
 use futures_timer;
-use mini_tokio;
+// use mini_tokio;
 use smol;
 use smol::{block_on as _, channel, prelude, Executor, Timer};
 use tokio;
@@ -51,4 +47,3 @@ use tokio::{
 use std::task::ready;
 use std::thread::park;
 use std::{future::Future, task::Context};
-

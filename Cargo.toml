@@ -3,13 +3,16 @@ name = "easy-async"
 version = "0.1.0"
 edition = "2021"
 
+[workspace]
+members = ["xpxc"]
+
 [dependencies]
 num_cpus = { version = "*" }
 parking = { version = "*" }
 concurrent-queue = { version = "*" }
 easy-parallel = { version = "*" }
 slab = { version = "*" }
-fastrand = { version = "*" }
+# fastrand = { version = "*" }
 
 parking_lot = { version = "*" }
 
@@ -35,8 +38,8 @@ futures = { version = "*" }
 tokio = { version = "*", features = ["full"] }
 async-std = { version = "*", features = ["unstable", "attributes"] }
 waker-fn = { version = "*" }
-mini-redis = { version = "*" }
-mini-tokio = { version = "*" }
+# mini-redis = { version = "*" }
+# mini-tokio = { version = "*" }
 
 
 # [target.'cfg(loom)'.dependencies]
