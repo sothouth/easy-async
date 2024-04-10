@@ -6,6 +6,5 @@ use std::ptr;
 use std::sync::Arc;
 use std::task::{RawWaker, RawWakerVTable, Waker};
 
-
-
-fn main() {}
+fn main() {
+}

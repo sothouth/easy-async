@@ -1,7 +1,10 @@
 pub mod single;
 pub use single::Single;
+
 pub mod bounded;
 pub use bounded::Bounded;
+
+pub mod Unbounded;
 
 pub mod prelude {
     pub use super::bounded::Bounded;
