@@ -1,11 +1,12 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use easy_async::utils::xpxc::{bounded, Queue};
 use easy_parallel::Parallel;
+
+use easy_async::utils::xpxc::prelude::*;
 
 #[test]
 fn smoke() {
-    let q = bounded(1);
+    let q = Single::new();
 
     q.push(7).unwrap();
     assert_eq!(q.pop(), Ok(7));
@@ -17,13 +18,13 @@ fn smoke() {
 
 #[test]
 fn capacity() {
-    let q = bounded::<usize>(1);
+    let q = Single::<usize>::new();
     assert_eq!(q.capacity(), 1);
 }
 
 #[test]
 fn len_empty_full() {
-    let q = bounded(1);
+    let q = Single::new();
 
     assert_eq!(q.len(), 0);
     assert_eq!(q.is_empty(), true);
@@ -46,7 +47,7 @@ fn len_empty_full() {
 fn spsc() {
     const COUNT: usize = if cfg!(miri) { 100 } else { 100_000 };
 
-    let q = bounded(1);
+    let q = Single::new();
 
     Parallel::new()
         .add(|| {
@@ -73,7 +74,7 @@ fn mpmc() {
     const COUNT: usize = if cfg!(miri) { 100 } else { 25_000 };
     const THREADS: usize = 1;
 
-    let q = bounded::<usize>(THREADS);
+    let q = Single::<usize>::new();
     let v = (0..COUNT).map(|_| AtomicUsize::new(0)).collect::<Vec<_>>();
 
     Parallel::new()
@@ -120,7 +121,7 @@ fn drops() {
         let additional = fastrand::usize(0..=1);
 
         DROPS.store(0, Ordering::SeqCst);
-        let q = bounded(1);
+        let q = Single::new();
 
         Parallel::new()
             .add(|| {
@@ -152,7 +153,7 @@ fn linearizable() {
     const COUNT: usize = if cfg!(miri) { 500 } else { 25_000 };
     const THREADS: usize = 4;
 
-    let q = bounded(1);
+    let q = Single::new();
 
     Parallel::new()
         .each(0..THREADS, |_| {

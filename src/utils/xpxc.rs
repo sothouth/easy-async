@@ -1,17 +1,12 @@
 pub mod single;
 pub use single::Single;
+pub mod bounded;
+pub use bounded::Bounded;
 
-pub fn bounded<T>(capacity: usize) -> impl Queue<T> {
-    if capacity == 1 {
-        Single::new()
-    } else {
-        todo!()
-    }
-}
-
-pub fn unbounded<T>() -> impl Queue<T> {
-    todo!();
-    Single::new()
+pub mod prelude {
+    pub use super::bounded::Bounded;
+    pub use super::single::Single;
+    pub use super::Queue;
 }
 
 pub trait Queue<T> {
