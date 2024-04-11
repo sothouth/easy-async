@@ -8,6 +8,9 @@ use super::LOCK;
 use super::NONE;
 use super::SOME;
 
+const LOCKNONE: usize = LOCK | NONE;
+const LOCKSOME: usize = LOCK | SOME;
+
 pub struct Bounded<T> {
     head: AtomicUsize,
     tail: AtomicUsize,
@@ -40,60 +43,44 @@ impl<T> Bounded<T> {
 
 impl<T> Queue<T> for Bounded<T> {
     fn push(&self, value: T) -> Result<(), T> {
-        let mut tail = self.tail.load(Acquire);
+        let tail = self.tail.fetch_add(1, AcqRel);
+        let slot = &self.slab[tail % self.slab.len()];
 
         loop {
-            let slot = &self.slab[tail % self.slab.len()];
-
             match unsafe { slot.try_lock_none() } {
                 Ok(_) => {
-                    self.tail.store(tail.wrapping_add(1), Release);
                     unsafe { slot.unchecked_set(value) };
                     return Ok(());
                 }
-                // tail has been updated
-                Err(SOME) => {
-                    let new_tail = self.tail.load(Acquire);
-                    if tail == new_tail {
+                Err(SOME | LOCKSOME) => {
+                    if tail.wrapping_sub(self.head.load(Acquire)) >= self.slab.len() {
+                        self.tail.fetch_sub(1, AcqRel);
                         return Err(value);
                     }
-                    tail = new_tail;
                 }
-                Err(_) => {
-                    if tail == self.head.load(Acquire) {
-                        return Err(value);
-                    }
-                    tail = self.tail.load(Acquire);
-                }
+                // LOCK|NONE
+                Err(_) => {}
             }
         }
     }
 
     fn pop(&self) -> Result<T, ()> {
-        let mut head = self.head.load(Acquire);
+        let head = self.head.fetch_add(1, AcqRel);
+        let slot = &self.slab[head % self.slab.len()];
 
         loop {
-            let slot = &self.slab[head % self.slab.len()];
-
             match unsafe { slot.try_lock_some() } {
                 Ok(_) => {
-                    self.head.store(head.wrapping_add(1), Release);
                     return Ok(unsafe { slot.unchecked_get() });
                 }
-                // head has been updated
-                Err(NONE) => {
-                    let new_head = self.head.load(Acquire);
-                    if head == new_head {
+                Err(NONE | LOCKNONE) => {
+                    if head >= self.tail.load(Acquire) {
+                        self.head.fetch_sub(1, AcqRel);
                         return Err(());
                     }
-                    head = new_head;
                 }
-                Err(_) => {
-                    if head == self.tail.load(Acquire) {
-                        return Err(());
-                    }
-                    head = self.head.load(Acquire);
-                }
+                // LOCK|SOME
+                Err(_) => {}
             }
         }
     }
@@ -102,7 +89,13 @@ impl<T> Queue<T> for Bounded<T> {
         let head = self.head.load(Acquire);
         let tail = self.tail.load(Acquire);
 
-        tail.wrapping_sub(head)
+        let len = tail.wrapping_sub(head);
+
+        if len < self.slab.len() {
+            len
+        } else {
+            self.slab.len()
+        }
     }
 
     fn capacity(&self) -> usize {
