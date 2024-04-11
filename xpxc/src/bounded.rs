@@ -43,11 +43,11 @@ impl<T> Queue<T> for Bounded<T> {
         let mut tail = self.tail.load(Acquire);
 
         loop {
-            let slot = &self.slab[tail];
+            let slot = &self.slab[tail % self.slab.len()];
 
             match unsafe { slot.try_lock_none() } {
                 Ok(_) => {
-                    self.tail.store((tail + 1) % self.slab.len(), Release);
+                    self.tail.store(tail.wrapping_add(1), Release);
                     unsafe { slot.unchecked_set(value) };
                     return Ok(());
                 }
@@ -73,11 +73,11 @@ impl<T> Queue<T> for Bounded<T> {
         let mut head = self.head.load(Acquire);
 
         loop {
-            let slot = &self.slab[head];
+            let slot = &self.slab[head % self.slab.len()];
 
             match unsafe { slot.try_lock_some() } {
                 Ok(_) => {
-                    self.head.store((head + 1) % self.slab.len(), Release);
+                    self.head.store(head.wrapping_add(1), Release);
                     return Ok(unsafe { slot.unchecked_get() });
                 }
                 // head has been updated
@@ -102,13 +102,7 @@ impl<T> Queue<T> for Bounded<T> {
         let head = self.head.load(Acquire);
         let tail = self.tail.load(Acquire);
 
-        let len = tail.wrapping_sub(head).wrapping_add(self.slab.len()) % self.slab.len();
-
-        if len == 0 && self.slab[tail].is_some() {
-            self.slab.len()
-        } else {
-            len
-        }
+        tail.wrapping_sub(head)
     }
 
     fn capacity(&self) -> usize {

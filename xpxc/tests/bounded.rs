@@ -20,8 +20,6 @@ fn smoke() {
 
 #[test]
 fn capacity() {
-    let q = Bounded::<usize>::with_capacity(2);
-    println!("{}", q.capacity());
     for i in 1..10 {
         let q = Bounded::<i32>::with_capacity(i);
         assert_eq!(q.capacity(), i);
@@ -116,7 +114,6 @@ fn len() {
 
     assert_eq!(q.len(), 0);
 }
-
 
 #[test]
 fn spsc() {
