@@ -8,12 +8,15 @@ const NONE: usize = 1 << 0;
 const SOME: usize = 1 << 1;
 const LOCK: usize = 1 << 2;
 
-pub struct Slab<T> {
+pub struct Slot<T> {
     state: AtomicUsize,
     value: UnsafeCell<MaybeUninit<T>>,
 }
 
-impl<T> Slab<T> {
+unsafe impl<T> Send for Slot<T> {}
+unsafe impl<T> Sync for Slot<T> {}
+
+impl<T> Slot<T> {
     #[inline]
     pub fn new() -> Self {
         Self {
@@ -58,16 +61,21 @@ impl<T> Slab<T> {
     pub fn is_none(&self) -> bool {
         self.state.load(Acquire) == NONE
     }
+
+    #[inline]
+    pub fn is_some(&self) -> bool {
+        self.state.load(Acquire) == SOME
+    }
 }
 
-impl<T> Default for Slab<T> {
+impl<T> Default for Slot<T> {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T> fmt::Debug for Slab<T> {
+impl<T> fmt::Debug for Slot<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Slab")
             .field(
@@ -85,7 +93,7 @@ impl<T> fmt::Debug for Slab<T> {
     }
 }
 
-impl<T> Drop for Slab<T> {
+impl<T> Drop for Slot<T> {
     fn drop(&mut self) {
         if self.state.load(Acquire) == SOME {
             unsafe { self.value.get_mut().assume_init_drop() }

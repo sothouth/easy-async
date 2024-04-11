@@ -1,5 +1,5 @@
-pub mod slab;
-pub use slab::Slab;
+pub mod slot;
+pub use slot::Slot;
 
 pub mod single;
 pub use single::Single;
