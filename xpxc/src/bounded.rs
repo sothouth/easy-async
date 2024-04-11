@@ -5,9 +5,30 @@ use std::sync::atomic::Ordering::*;
 
 use super::Queue;
 
+const NONE: usize = 1 << 0;
+const SOME: usize = 1 << 1;
+const LOCK: usize = 1 << 2;
+
 struct Slab<T> {
     state: AtomicUsize,
     value: UnsafeCell<MaybeUninit<T>>,
+}
+
+impl<T> Slab<T> {
+    #[inline]
+    fn new() -> Self {
+        Self {
+            state: AtomicUsize::new(NONE),
+            value: UnsafeCell::new(MaybeUninit::uninit()),
+        }
+    }
+}
+
+impl<T> Default for Slab<T> {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 pub struct Bounded<T> {

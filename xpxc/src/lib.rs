@@ -1,3 +1,6 @@
+pub mod slab;
+pub use slab::Slab;
+
 pub mod single;
 pub use single::Single;
 
