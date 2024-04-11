@@ -1,40 +1,17 @@
-use std::cell::UnsafeCell;
-use std::mem::MaybeUninit;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::*;
 
 use super::Queue;
+use super::Slot;
 
-const NONE: usize = 1 << 0;
-const SOME: usize = 1 << 1;
-const LOCK: usize = 1 << 2;
-
-struct Slab<T> {
-    state: AtomicUsize,
-    value: UnsafeCell<MaybeUninit<T>>,
-}
-
-impl<T> Slab<T> {
-    #[inline]
-    fn new() -> Self {
-        Self {
-            state: AtomicUsize::new(NONE),
-            value: UnsafeCell::new(MaybeUninit::uninit()),
-        }
-    }
-}
-
-impl<T> Default for Slab<T> {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
-}
+use super::LOCK;
+use super::NONE;
+use super::SOME;
 
 pub struct Bounded<T> {
     head: AtomicUsize,
     tail: AtomicUsize,
-    buffer: Box<[Slab<T>]>,
+    slab: Box<[Slot<T>]>,
 }
 
 unsafe impl<T: Send> Send for Bounded<T> {}
@@ -42,11 +19,17 @@ unsafe impl<T: Send> Sync for Bounded<T> {}
 
 impl<T> Bounded<T> {
     pub fn new(capacity: usize) -> Self {
-        assert!(capacity > 0, "capacity must > 0");
+        assert!(capacity > 0, "capacity must be positive");
+
+        let mut slab = Vec::with_capacity(capacity);
+        for _ in 0..capacity {
+            slab.push(Slot::new());
+        }
+
         Self {
             head: AtomicUsize::new(0),
             tail: AtomicUsize::new(0),
-            buffer: Vec::with_capacity(capacity).into_boxed_slice(),
+            slab: slab.into_boxed_slice(),
         }
     }
 
@@ -57,19 +40,79 @@ impl<T> Bounded<T> {
 
 impl<T> Queue<T> for Bounded<T> {
     fn push(&self, value: T) -> Result<(), T> {
-        todo!()
+        let mut tail = self.tail.load(Acquire);
+
+        loop {
+            let slot = &self.slab[tail];
+
+            match unsafe { slot.try_lock_none() } {
+                Ok(_) => {
+                    self.tail.store((tail + 1) % self.slab.len(), Release);
+                    unsafe { slot.unchecked_set(value) };
+                    return Ok(());
+                }
+                // tail has been updated
+                Err(SOME) => {
+                    let new_tail = self.tail.load(Acquire);
+                    if tail == new_tail {
+                        return Err(value);
+                    }
+                    tail = new_tail;
+                }
+                Err(_) => {
+                    if tail == self.head.load(Acquire) {
+                        return Err(value);
+                    }
+                    tail = self.tail.load(Acquire);
+                }
+            }
+        }
     }
 
     fn pop(&self) -> Result<T, ()> {
-        todo!()
+        let mut head = self.head.load(Acquire);
+
+        loop {
+            let slot = &self.slab[head];
+
+            match unsafe { slot.try_lock_some() } {
+                Ok(_) => {
+                    self.head.store((head + 1) % self.slab.len(), Release);
+                    return Ok(unsafe { slot.unchecked_get() });
+                }
+                // head has been updated
+                Err(NONE) => {
+                    let new_head = self.head.load(Acquire);
+                    if head == new_head {
+                        return Err(());
+                    }
+                    head = new_head;
+                }
+                Err(_) => {
+                    if head == self.tail.load(Acquire) {
+                        return Err(());
+                    }
+                    head = self.head.load(Acquire);
+                }
+            }
+        }
     }
 
     fn len(&self) -> usize {
-        todo!()
+        let head = self.head.load(Acquire);
+        let tail = self.tail.load(Acquire);
+
+        let len = tail.wrapping_sub(head).wrapping_add(self.slab.len()) % self.slab.len();
+
+        if len == 0 && self.slab[tail].is_some() {
+            self.slab.len()
+        } else {
+            len
+        }
     }
 
     fn capacity(&self) -> usize {
-        todo!()
+        self.slab.len()
     }
 
     fn is_empty(&self) -> bool {
@@ -83,8 +126,4 @@ impl<T> Queue<T> for Bounded<T> {
     fn slack(&self) -> usize {
         self.capacity() - self.len()
     }
-}
-
-impl<T> Drop for Bounded<T> {
-    fn drop(&mut self) {}
 }

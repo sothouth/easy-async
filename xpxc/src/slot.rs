@@ -4,13 +4,13 @@ use std::mem::MaybeUninit;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::*;
 
-const NONE: usize = 1 << 0;
-const SOME: usize = 1 << 1;
-const LOCK: usize = 1 << 2;
+pub const NONE: usize = 1 << 0;
+pub const SOME: usize = 1 << 1;
+pub const LOCK: usize = 1 << 2;
 
 pub struct Slot<T> {
-    state: AtomicUsize,
-    value: UnsafeCell<MaybeUninit<T>>,
+    pub state: AtomicUsize,
+    pub value: UnsafeCell<MaybeUninit<T>>,
 }
 
 unsafe impl<T> Send for Slot<T> {}
@@ -27,34 +27,51 @@ impl<T> Slot<T> {
 
     #[inline]
     pub fn set(&self, value: T) -> Result<(), T> {
-        match self
-            .state
-            .compare_exchange(NONE, LOCK | SOME, AcqRel, Acquire)
-        {
-            Ok(_) => {
-                unsafe {
-                    (*self.value.get()).write(value);
+        unsafe {
+            match self.try_lock_none() {
+                Ok(_) => {
+                    self.unchecked_set(value);
+                    Ok(())
                 }
-                self.state.store(SOME, Release);
-                Ok(())
+                Err(_) => Err(value),
             }
-            Err(_) => Err(value),
         }
     }
 
     #[inline]
+    pub unsafe fn try_lock_none(&self) -> Result<usize, usize> {
+        self.state
+            .compare_exchange(NONE, LOCK | SOME, AcqRel, Acquire)
+    }
+
+    #[inline]
+    pub unsafe fn unchecked_set(&self, value: T) {
+        (*self.value.get()).write(value);
+        self.state.store(SOME, Release);
+    }
+
+    #[inline]
     pub fn get(&self) -> Result<T, ()> {
-        match self
-            .state
-            .compare_exchange(SOME, LOCK | NONE, AcqRel, Acquire)
-        {
-            Ok(_) => {
-                let value = unsafe { (*self.value.get()).assume_init_read() };
-                self.state.store(NONE, Release);
-                Ok(value)
+        unsafe {
+            match self.try_lock_some() {
+                Ok(_) => Ok(self.unchecked_get()),
+                Err(_) => Err(()),
             }
-            Err(_) => Err(()),
         }
+    }
+
+    #[inline]
+    pub unsafe fn try_lock_some(&self) -> Result<usize, usize> {
+        self.state
+            .compare_exchange(SOME, LOCK | NONE, AcqRel, Acquire)
+    }
+
+    /// Get value without check
+    #[inline]
+    pub unsafe fn unchecked_get(&self) -> T {
+        let value = (*self.value.get()).assume_init_read();
+        self.state.store(NONE, Release);
+        value
     }
 
     #[inline]
@@ -75,6 +92,14 @@ impl<T> Default for Slot<T> {
     }
 }
 
+impl<T> Drop for Slot<T> {
+    fn drop(&mut self) {
+        if self.state.load(Acquire) == SOME {
+            unsafe { self.value.get_mut().assume_init_drop() }
+        }
+    }
+}
+
 impl<T> fmt::Debug for Slot<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Slab")
@@ -90,13 +115,5 @@ impl<T> fmt::Debug for Slot<T> {
             )
             .field("value", &"..")
             .finish()
-    }
-}
-
-impl<T> Drop for Slot<T> {
-    fn drop(&mut self) {
-        if self.state.load(Acquire) == SOME {
-            unsafe { self.value.get_mut().assume_init_drop() }
-        }
     }
 }

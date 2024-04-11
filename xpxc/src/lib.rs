@@ -1,5 +1,8 @@
 pub mod slot;
 pub use slot::Slot;
+pub use slot::LOCK;
+pub use slot::NONE;
+pub use slot::SOME;
 
 pub mod single;
 pub use single::Single;

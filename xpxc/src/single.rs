@@ -36,24 +36,16 @@ impl<T> Queue<T> for Single<T> {
 
     #[inline]
     fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.slot.is_none()
     }
 
     #[inline]
     fn is_full(&self) -> bool {
-        self.len() == 1
+        self.slot.is_some()
     }
 
     #[inline]
     fn slack(&self) -> usize {
         self.slot.is_none() as usize
-    }
-}
-
-impl<T> Drop for Single<T> {
-    fn drop(&mut self) {
-        if let Ok(value) = self.slot.get() {
-            drop(value);
-        }
     }
 }
