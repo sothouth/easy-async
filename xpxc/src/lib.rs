@@ -1,8 +1,13 @@
 pub mod slot;
 pub use slot::Slot;
-pub use slot::LOCK;
-pub use slot::NONE;
-pub use slot::SOME;
+use slot::LOCK;
+use slot::NONE;
+use slot::SOME;
+
+pub use slot::IdSlot;
+use slot::ID_MOD;
+use slot::ID_SHIFT;
+use slot::STATE_MASK;
 
 pub mod single;
 pub use single::Single;

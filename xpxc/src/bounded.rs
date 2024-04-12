@@ -1,12 +1,16 @@
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::*;
 
+use super::IdSlot;
 use super::Queue;
-use super::Slot;
 
 use super::LOCK;
 use super::NONE;
 use super::SOME;
+
+use super::ID_MOD;
+use super::ID_SHIFT;
+use super::STATE_MASK;
 
 const LOCKNONE: usize = LOCK | NONE;
 const LOCKSOME: usize = LOCK | SOME;
@@ -14,7 +18,7 @@ const LOCKSOME: usize = LOCK | SOME;
 pub struct Bounded<T> {
     head: AtomicUsize,
     tail: AtomicUsize,
-    slab: Box<[Slot<T>]>,
+    slab: Box<[IdSlot<T>]>,
 }
 
 unsafe impl<T: Send> Send for Bounded<T> {}
@@ -25,8 +29,8 @@ impl<T> Bounded<T> {
         assert!(capacity > 0, "capacity must be positive");
 
         let mut slab = Vec::with_capacity(capacity);
-        for _ in 0..capacity {
-            slab.push(Slot::new());
+        for ith in 0..capacity {
+            slab.push(IdSlot::new(ith));
         }
 
         Self {
@@ -43,21 +47,38 @@ impl<T> Bounded<T> {
 
 impl<T> Queue<T> for Bounded<T> {
     fn push(&self, value: T) -> Result<(), T> {
-        let tail = self.tail.fetch_add(1, AcqRel);
-        let slot = &self.slab[tail % self.slab.len()];
+        let mut tail = self.tail.load(Acquire);
+        let mut slot = &self.slab[tail % self.slab.len()];
 
         loop {
-            match unsafe { slot.try_lock_none() } {
+            match unsafe { slot.try_lock_none(tail) } {
                 Ok(_) => {
-                    unsafe { slot.unchecked_set(value) };
+                    self.tail.store((tail + 1) & ID_MOD, Release);
+                    unsafe { slot.unchecked_set(value, tail) };
                     return Ok(());
                 }
-                Err(LOCKNONE) => {}
-                // SOME or LOCK|SOME
-                Err(_) => {
-                    if tail.wrapping_sub(self.head.load(Acquire)) >= self.slab.len() {
-                        self.tail.fetch_sub(1, AcqRel);
+                Err(state) => {
+                    let id = state >> ID_SHIFT;
+                    let state = state & STATE_MASK;
+
+                    if id != tail {
                         return Err(value);
+                    }
+
+                    match state {
+                        SOME => {
+                            let new_tail = self.tail.load(Acquire);
+                            if tail == new_tail {
+                                return Err(value);
+                            }
+                            tail = new_tail;
+                            slot = &self.slab[tail % self.slab.len()];
+                        }
+                        LOCKNONE => {}
+                        LOCKSOME => {}
+                        _ => {
+                            unreachable!();
+                        }
                     }
                 }
             }
@@ -65,21 +86,37 @@ impl<T> Queue<T> for Bounded<T> {
     }
 
     fn pop(&self) -> Result<T, ()> {
-        let head = self.head.fetch_add(1, AcqRel);
-        let slot = &self.slab[head % self.slab.len()];
+        let mut head = self.head.load(Acquire);
+        let mut slot = &self.slab[head % self.slab.len()];
 
         loop {
-            match unsafe { slot.try_lock_some() } {
+            match unsafe { slot.try_lock_some(head) } {
                 Ok(_) => {
-                    return Ok(unsafe { slot.unchecked_get() });
+                    self.head.store((head + 1) & ID_MOD, Release);
+                    return Ok(unsafe { slot.unchecked_get(head + self.slab.len()) });
                 }
-                Err(LOCKSOME) => {}
-                // NONE or LOCK|NONE
-                Err(_) => {
-                    // if head >= self.tail.load(Acquire) {
-                        if self.tail.load(Acquire).wrapping_sub(head+1)>=self.slab.len() {
-                        self.head.fetch_sub(1, AcqRel);
+                Err(state)=>{
+                    let id = state >> ID_SHIFT;
+                    let state = state & STATE_MASK;
+
+                    if id != head {
                         return Err(());
+                    }
+
+                    match state {
+                        NONE => {
+                            let new_head = self.head.load(Acquire);
+                            if head == new_head {
+                                return Err(());
+                            }
+                            head = new_head;
+                            slot = &self.slab[head % self.slab.len()];
+                        }
+                        LOCKSOME => {}
+                        LOCKNONE => {}
+                        _ => {
+                            unreachable!();
+                        }
                     }
                 }
             }
