@@ -52,14 +52,14 @@ impl<T> Queue<T> for Bounded<T> {
                     unsafe { slot.unchecked_set(value) };
                     return Ok(());
                 }
-                Err(SOME | LOCKSOME) => {
+                Err(LOCKNONE) => {}
+                // SOME or LOCK|SOME
+                Err(_) => {
                     if tail.wrapping_sub(self.head.load(Acquire)) >= self.slab.len() {
                         self.tail.fetch_sub(1, AcqRel);
                         return Err(value);
                     }
                 }
-                // LOCK|NONE
-                Err(_) => {}
             }
         }
     }
@@ -73,14 +73,15 @@ impl<T> Queue<T> for Bounded<T> {
                 Ok(_) => {
                     return Ok(unsafe { slot.unchecked_get() });
                 }
-                Err(NONE | LOCKNONE) => {
-                    if head >= self.tail.load(Acquire) {
+                Err(LOCKSOME) => {}
+                // NONE or LOCK|NONE
+                Err(_) => {
+                    // if head >= self.tail.load(Acquire) {
+                        if self.tail.load(Acquire).wrapping_sub(head+1)>=self.slab.len() {
                         self.head.fetch_sub(1, AcqRel);
                         return Err(());
                     }
                 }
-                // LOCK|SOME
-                Err(_) => {}
             }
         }
     }

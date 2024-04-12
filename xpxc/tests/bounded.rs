@@ -236,3 +236,36 @@ fn linearizable() {
         })
         .run();
 }
+
+#[test]
+fn test() {
+    const COUNT: usize = 2;
+    const THREADS: usize = 4;
+
+    let q = Bounded::<usize>::with_capacity(3);
+    // let v=(0..COUNT).map(|_|AtomicUsize::new(0)).collect::<Vec<_>>();
+
+    Parallel::new()
+        .each(0..THREADS, |ith| {
+            for _ in 0..COUNT {
+                let n = loop {
+                    if let Ok(x) = q.pop() {
+                        break x;
+                    }
+                };
+                // v[n].fetch_add(1,Ordering::SeqCst);
+                println!("{ith} got {n:02}");
+            }
+        })
+        .each(0..THREADS, |ith| {
+            for i in 0..COUNT {
+                while q.push(ith * 10 + i).is_err() {}
+                println!("push {:02}", ith * 10 + i);
+            }
+        })
+        .run();
+
+    // for c in v{
+    //     assert_eq!(c.load(Ordering::SeqCst),THREADS);
+    // }
+}
