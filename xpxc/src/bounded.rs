@@ -47,13 +47,12 @@ impl<T> Bounded<T> {
 
 impl<T> Queue<T> for Bounded<T> {
     fn push(&self, value: T) -> Result<(), T> {
-        let mut tail = self.tail.load(Acquire);
+        let mut tail = self.tail.fetch_add(1, AcqRel) & ID_MOD;
         let mut slot = &self.slab[tail % self.slab.len()];
 
         loop {
             match unsafe { slot.try_lock_none(tail) } {
                 Ok(_) => {
-                    self.tail.store((tail + 1) & ID_MOD, Release);
                     unsafe { slot.unchecked_set(value, tail) };
                     return Ok(());
                 }
@@ -61,24 +60,15 @@ impl<T> Queue<T> for Bounded<T> {
                     let id = state >> ID_SHIFT;
                     let state = state & STATE_MASK;
 
-                    if id != tail {
+                    if id == tail {
+                        continue;
+                    } else if tail.wrapping_sub(id) % self.slab.len() == 0 {
+                        self.tail.fetch_sub(1, AcqRel);
                         return Err(value);
-                    }
-
-                    match state {
-                        SOME => {
-                            let new_tail = self.tail.load(Acquire);
-                            if tail == new_tail {
-                                return Err(value);
-                            }
-                            tail = new_tail;
-                            slot = &self.slab[tail % self.slab.len()];
-                        }
-                        LOCKNONE => {}
-                        LOCKSOME => {}
-                        _ => {
-                            unreachable!();
-                        }
+                    } else {
+                        unreachable!("{} {} {}", id, tail, self.slab.len());
+                        // self.tail.fetch_sub(1, AcqRel);
+                        // return Err(value);
                     }
                 }
             }
@@ -86,37 +76,36 @@ impl<T> Queue<T> for Bounded<T> {
     }
 
     fn pop(&self) -> Result<T, ()> {
-        let mut head = self.head.load(Acquire);
+        let mut head = self.head.fetch_add(1, AcqRel) & ID_MOD;
         let mut slot = &self.slab[head % self.slab.len()];
 
         loop {
-            match unsafe { slot.try_lock_some(head) } {
+            match unsafe { slot.try_lock_some(head, head + self.slab.len()) } {
                 Ok(_) => {
-                    self.head.store((head + 1) & ID_MOD, Release);
                     return Ok(unsafe { slot.unchecked_get(head + self.slab.len()) });
                 }
-                Err(state)=>{
+                Err(state) => {
                     let id = state >> ID_SHIFT;
                     let state = state & STATE_MASK;
 
-                    if id != head {
-                        return Err(());
-                    }
-
-                    match state {
-                        NONE => {
-                            let new_head = self.head.load(Acquire);
-                            if head == new_head {
+                    if id == head {
+                        match state {
+                            NONE | LOCKNONE => {
+                                self.head.fetch_sub(1, AcqRel);
                                 return Err(());
                             }
-                            head = new_head;
-                            slot = &self.slab[head % self.slab.len()];
+                            LOCKSOME => {}
+                            _ => {
+                                unreachable!();
+                            }
                         }
-                        LOCKSOME => {}
-                        LOCKNONE => {}
-                        _ => {
-                            unreachable!();
-                        }
+                    } else {
+                        self.head.fetch_sub(1, AcqRel);
+                        return Err(());
+                        // match state{
+                        //     NONE|LOCKNONE=>{}
+
+                        // }
                     }
                 }
             }

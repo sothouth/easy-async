@@ -176,29 +176,31 @@ impl<T> IdSlot<T> {
     }
 
     #[inline]
-    pub fn get(&self, id: usize) -> Result<T, ()> {
+    pub fn get(&self, old_id: usize, new_id: usize) -> Result<T, ()> {
         unsafe {
-            match self.try_lock_some(id) {
-                Ok(_) => Ok(self.unchecked_get(id)),
+            match self.try_lock_some(old_id, new_id) {
+                Ok(_) => Ok(self.unchecked_get(new_id)),
                 Err(_) => Err(()),
             }
         }
     }
 
-    /// Assume state is `(id << ID_SHIFT) | SOME`
+    /// Assume state is `(old_id << ID_SHIFT) | SOME`
+    ///
+    /// Update state to `(new_id << ID_SHIFT) | LOCK | NONE`
     #[inline]
-    pub unsafe fn try_lock_some(&self, id: usize) -> Result<usize, usize> {
+    pub unsafe fn try_lock_some(&self, old_id: usize, new_id: usize) -> Result<usize, usize> {
         self.state.compare_exchange(
-            (id << ID_SHIFT) | SOME,
-            (id << ID_SHIFT) | LOCK | NONE,
+            (old_id << ID_SHIFT) | SOME,
+            (new_id << ID_SHIFT) | LOCK | NONE,
             AcqRel,
             Acquire,
         )
     }
 
-    /// Assume state is `(old_id << ID_SHIFT) | LOCK | NONE`
+    /// Assume state is `(id << ID_SHIFT) | LOCK | NONE`
     ///
-    /// Update state to `(id << ID_SHIFT) | SOME`
+    /// Update state to `(id << ID_SHIFT) | NONE`
     #[inline]
     pub unsafe fn unchecked_get(&self, id: usize) -> T {
         let value = (*self.value.get()).assume_init_read();
