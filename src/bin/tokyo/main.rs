@@ -1,3 +1,4 @@
+// #![allow(warnings)]
 use tokio;
 
 fn main() {
@@ -8,8 +9,8 @@ fn main() {
         .enable_time()
         .build()
         .unwrap();
+    rt.block_on(rt.spawn_blocking(|| 1));
 }
-
 
 // #[cfg(test)]
 // mod tests{
@@ -20,10 +21,6 @@ fn main() {
 //         println!("cpus: {}", get_physical());
 //     }
 // }
-
-
-
-
 
 use crossbeam::channel;
 use futures::future::BoxFuture;
@@ -160,13 +157,11 @@ where
     F: Future<Output = ()> + Send + 'static,
 {
     CURRENT.with(|cell| {
-        
         println!("fn spawn init");
         let borrow = cell.borrow();
         let sender = borrow.as_ref().unwrap();
         Task::spawn(future, sender);
         println!("fn spawn end");
-
     });
 }
 
@@ -196,7 +191,6 @@ impl Task {
 
         let _ = sender.send(task);
         println!("task spawn end");
-
     }
 
     fn poll(self: Arc<Self>) {
@@ -208,5 +202,7 @@ impl Task {
 }
 
 impl ArcWake for Task {
-    fn wake_by_ref(arc_self: &Arc<Self>) { let _ = arc_self.executor.send(arc_self.clone()); }
+    fn wake_by_ref(arc_self: &Arc<Self>) {
+        let _ = arc_self.executor.send(arc_self.clone());
+    }
 }
