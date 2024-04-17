@@ -7,9 +7,9 @@
 #![feature(const_trait_impl)]
 #![feature(effects)]
 #![feature(const_waker)]
-#![feature(future_poll_fn)]
 // #![feature(unboxed_closures)]
 // #![feature(fn_traits)]
+// #![feature(future_poll_fn)]
 
 mod timer_future;
 
@@ -17,11 +17,14 @@ pub mod executor_task;
 
 pub mod prelude;
 
+mod block_on;
+pub use block_on::block_on;
+pub use block_on::block_on_naive;
+
 pub mod executor;
-pub use executor::block_on::block_on;
 
 pub mod blocking;
-// pub use
+pub use blocking::spawn_blocking;
 
 pub mod waker;
 
@@ -29,8 +32,6 @@ pub mod future;
 pub mod macros;
 pub mod stream;
 pub mod task;
-
-pub mod spawn_blocking;
 
 mod refer;
 

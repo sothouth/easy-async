@@ -1,6 +1,4 @@
-use std::collections::VecDeque;
 use std::env;
-use std::future::Future;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock};
 use std::thread;
@@ -10,7 +8,7 @@ use concurrent_queue::ConcurrentQueue;
 
 mod task;
 
-use task::{task_and_handle, OnceTask, OnceTaskHandle};
+use task::{task_and_handle, OnceTaskHandle};
 
 static GLOBAL: OnceLock<ThreadPool> = OnceLock::new();
 
@@ -75,6 +73,7 @@ impl ThreadPool {
         handle
     }
 
+    /// Start a new worker on the current thread.
     fn worker(&'static self) {
         let mut inner = self.inner.lock().unwrap();
 
@@ -105,6 +104,7 @@ impl ThreadPool {
         }
     }
 
+    /// Schedule the worker and spawn more workers if necessary.
     fn schedule(&'static self, mut inner: MutexGuard<'static, Inner>) {
         self.notifier.notify_one();
 

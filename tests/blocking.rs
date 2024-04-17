@@ -12,7 +12,7 @@ use easy_async::utils::poll_once;
 
 #[test]
 fn smoke() {
-    const N: usize = 10;
+    const N: usize = 1000;
     const M: usize = 1000;
     let a = Arc::new(AtomicUsize::new(0));
 
