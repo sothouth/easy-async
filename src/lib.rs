@@ -8,6 +8,8 @@
 #![feature(effects)]
 #![feature(const_waker)]
 #![feature(future_poll_fn)]
+// #![feature(unboxed_closures)]
+// #![feature(fn_traits)]
 
 mod timer_future;
 
@@ -17,6 +19,9 @@ pub mod prelude;
 
 pub mod executor;
 pub use executor::block_on::block_on;
+
+pub mod blocking;
+// pub use
 
 pub mod waker;
 

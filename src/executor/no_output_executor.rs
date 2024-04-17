@@ -55,7 +55,9 @@ impl Executor {
 
     pub fn spawn(&self, future: impl Future<Output = ()> + Send + 'static) -> TaskHandle {
         let (task, handle) = task_and_handle(future, &self.rt);
+
         task.schedule();
+
         handle
     }
 
