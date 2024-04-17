@@ -12,7 +12,7 @@ use slab::Slab;
 
 use async_task::{Builder as TaskBuilder, Runnable, Task};
 
-use crate::utils::call_on_drop::CallOnDrop;
+use crate::utils::CallOnDrop;
 use crate::waker::OptionWaker;
 
 static GLOBAL: OnceLock<Executor<'_>> = OnceLock::new();
