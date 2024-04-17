@@ -10,31 +10,61 @@ mod task;
 
 use task::{task_and_handle, OnceTaskHandle};
 
-static GLOBAL: OnceLock<ThreadPool> = OnceLock::new();
-
+/// Runs blocking code on a thread pool.
+///
+/// # Example
+///
+///
+/// ```no_run
+/// use easy_async::spawn_block;
+///
+/// spawn_block(|| println!("now running on a worker thread")).await;
+/// ```
 pub fn spawn_blocking(f: impl FnOnce() + Send + 'static) -> OnceTaskHandle {
     ThreadPool::get().spawn_blocking(f)
 }
 
-const TIMEOUT: u64 = 500;
-
+/// Default size of thread pool.
 const DEFAULT_SIZE: usize = 500;
 
+/// Minimum size of thread pool.
 const MIN_SIZE: usize = 1;
 
+/// Maximum size of thread pool.
 const MAX_SIZE: usize = 10000;
 
+/// Env variable that allows override default value of max worker count.
 const ENV_SIZE_NAME: &str = "BLOCKING_POOL_SIZE";
 
+/// When waitting task count is bigger than `idle_count * BUSY_TIMES`,
+/// pool will try to wake all worker up and spawn a new worker.
+const BUSY_TIMES: usize = 4;
+
+/// If there is no task, the worker thread will terminate after `TIMEOUT`ms.
+const TIMEOUT: u64 = 500;
+
+/// Singleton of the thread pool.
+static GLOBAL: OnceLock<ThreadPool> = OnceLock::new();
+
+/// The blocking executor.
 pub struct ThreadPool {
+    /// Inner state of thread pool.
     inner: Mutex<Inner>,
+    /// Waiting queue of blocking tasks.
     queue: Arc<ConcurrentQueue<OnceTaskHandle>>,
+    /// Control workers' sleep and wake up.
     notifier: Condvar,
 }
 
+/// Inner state of the thread pool.
 pub struct Inner {
+    /// The number of idle workers.
     idle_count: usize,
+    /// Total number of worker threads.
+    ///
+    /// Equal to idle threads + active threads.
     thread_count: usize,
+    /// Maximum number of workers in the pool.
     pool_size: usize,
 }
 
@@ -63,6 +93,9 @@ impl ThreadPool {
         })
     }
 
+    /// Spawns a FnOnce onto this thread pool.
+    ///
+    /// Return a [`OnceTaskHandle`] for the spawned task.
     fn spawn_blocking(&'static self, f: impl FnOnce() + Send + 'static) -> OnceTaskHandle {
         let (task, handle) = task_and_handle(f);
 
@@ -74,6 +107,8 @@ impl ThreadPool {
     }
 
     /// Start a new worker on the current thread.
+    ///
+    /// Worker can control self idle and terminate.
     fn worker(&'static self) {
         let mut inner = self.inner.lock().unwrap();
 
@@ -104,11 +139,13 @@ impl ThreadPool {
         }
     }
 
-    /// Schedule the worker and spawn more workers if necessary.
+    /// Wake up workers and spawn more workers as needed.
     fn schedule(&'static self, mut inner: MutexGuard<'static, Inner>) {
         self.notifier.notify_one();
 
-        while self.queue.len() > inner.idle_count * 5 && inner.thread_count < inner.pool_size {
+        while self.queue.len() > inner.idle_count * BUSY_TIMES
+            && inner.thread_count < inner.pool_size
+        {
             self.notifier.notify_all();
 
             static ID: AtomicUsize = AtomicUsize::new(1);
