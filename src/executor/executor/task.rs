@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicUsize, Ordering::*};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use crate::executor::no_output_executor::Runtime;
+use crate::executor::executor::Runtime;
 use crate::waker::AtomicWaker;
 
 mod waker;

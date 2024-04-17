@@ -22,8 +22,8 @@ fn lock_worker_many_async() {
 
 #[test]
 fn no_output_many_async() {
-    use easy_async::executor::no_output_executor::complated;
-    use easy_async::executor::no_output_executor::spawn;
+    use easy_async::executor::executor::complated;
+    use easy_async::executor::executor::spawn;
 
     const NUM: usize = 10000;
     const TO: usize = 100;

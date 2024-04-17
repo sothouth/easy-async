@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use easy_async::block_on;
 use easy_async::blocking::spawn_blocking;
 
-use easy_async::utils::poll_once;
+use easy_async::future::poll_once;
 
 #[test]
 fn smoke() {

@@ -93,8 +93,8 @@ impl OnceTaskHandle {
             .compare_exchange(SCHEDULED, RUNNING, AcqRel, Acquire)
             .is_err()
         {
-            panic!("double run.");
-            return;
+            panic!("double run a FnOnce.");
+            // return;
         }
 
         unsafe {

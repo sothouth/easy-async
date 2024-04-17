@@ -8,7 +8,8 @@ use std::thread;
 
 use concurrent_queue::ConcurrentQueue;
 
-use crate::task::task::{task_and_handle, TaskHandle};
+mod task;
+use task::{task_and_handle, TaskHandle};
 
 static GLOBAL: OnceLock<Executor> = OnceLock::new();
 

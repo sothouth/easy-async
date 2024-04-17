@@ -2,7 +2,6 @@
 
 use std::{
     async_iter::AsyncIterator,
-    future::Future,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -34,7 +33,7 @@ impl Counter {
 impl AsyncIterator for Counter {
     type Item = usize;
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+    fn poll_next(mut self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let res = self.cur;
         self.cur += 1;
         if res < 6 {

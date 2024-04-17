@@ -1,10 +1,9 @@
-use crate::waker::{parker_and_waker, Parker};
 use std::cell::RefCell;
-use std::{
-    future::Future,
-    pin,
-    task::{Context, Poll, Waker},
-};
+use std::future::Future;
+use std::pin;
+use std::task::{Context, Poll, Waker};
+
+use crate::waker::{parker_and_waker, Parker};
 
 pub fn block_on<F: Future>(fut: F) -> F::Output {
     let mut fut = pin::pin!(fut);

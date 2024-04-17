@@ -5,12 +5,12 @@ use std::{
     task::{Context, Poll},
 };
 
-pub struct Stream<'a, T: Unpin + ?Sized> {
-    stream: &'a mut T,
+pub struct NextFuture<'a, S: Unpin + ?Sized> {
+    stream: &'a mut S,
 }
 
-impl<T: AsyncIterator + Unpin + ?Sized> Future for Stream<'_, T> {
-    type Output = Option<T::Item>;
+impl<S: AsyncIterator + Unpin + ?Sized> Future for NextFuture<'_, S> {
+    type Output = Option<S::Item>;
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         Pin::new(&mut *self.stream).poll_next(cx)
     }
@@ -19,10 +19,10 @@ impl<T: AsyncIterator + Unpin + ?Sized> Future for Stream<'_, T> {
 impl<T: AsyncIterator + ?Sized> AsyncIteratorExt for T {}
 
 pub trait AsyncIteratorExt: AsyncIterator {
-    fn next(&mut self) -> Stream<Self>
+    fn next(&mut self) -> NextFuture<Self>
     where
         Self: Unpin,
     {
-        Stream { stream: self }
+        NextFuture { stream: self }
     }
 }
