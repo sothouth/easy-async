@@ -1,3 +1,13 @@
+//! A thread pool. Used to execute blocking code in an async environment.
+//!
+//! # Examples
+//!
+//! ```no_run
+//! use easy_async::spawn_blocking;
+//!
+//! spawn_blocking(|| println!("now running on a worker thread")).await;
+//! ```
+
 use std::env;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock};
@@ -16,9 +26,9 @@ use task::{task_and_handle, OnceTaskHandle};
 ///
 ///
 /// ```no_run
-/// use easy_async::spawn_block;
+/// use easy_async::spawn_blocking;
 ///
-/// spawn_block(|| println!("now running on a worker thread")).await;
+/// spawn_blocking(|| println!("now running on a worker thread")).await;
 /// ```
 pub fn spawn_blocking(f: impl FnOnce() + Send + 'static) -> OnceTaskHandle {
     ThreadPool::get().spawn_blocking(f)

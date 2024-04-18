@@ -10,6 +10,8 @@
 // #![feature(unboxed_closures)]
 // #![feature(fn_traits)]
 // #![feature(future_poll_fn)]
+#![feature(alloc_layout_extra)]
+#![feature(const_alloc_layout)]
 
 pub mod prelude;
 
@@ -30,3 +32,8 @@ pub mod macros;
 pub mod stream;
 
 pub mod utils;
+
+pub mod task;
+
+#[test]
+fn temp() {}
