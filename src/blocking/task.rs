@@ -48,7 +48,7 @@ impl Drop for OnceTask {
     fn drop(&mut self) {
         // Drop the task if it is not run.
         if self.state.load(Acquire) != COMPLETED {
-            let _ = unsafe { Box::from_raw(self.f.get()) };
+            unsafe { self.f.get().drop_in_place() };
         }
     }
 }
