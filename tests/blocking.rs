@@ -1,5 +1,3 @@
-
-
 use std::pin::pin;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::*;
@@ -38,7 +36,7 @@ fn smoke() {
 
 #[test]
 fn sleep() {
-    let dur = Duration::from_secs(1);
+    let dur = Duration::from_millis(100);
     let start = Instant::now();
 
     block_on(async {
@@ -49,3 +47,5 @@ fn sleep() {
     });
     assert!(start.elapsed() > dur);
 }
+
+

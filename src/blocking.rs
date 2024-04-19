@@ -16,9 +16,9 @@ use std::time::Duration;
 
 use concurrent_queue::ConcurrentQueue;
 
-mod task;
+mod once_task;
 
-use task::{task_and_handle, OnceTaskHandle};
+use once_task::{task_and_handle, OnceTask, OnceTaskHandle};
 
 /// Runs blocking code on a thread pool.
 ///
@@ -30,7 +30,10 @@ use task::{task_and_handle, OnceTaskHandle};
 ///
 /// spawn_blocking(|| println!("now running on a worker thread")).await;
 /// ```
-pub fn spawn_blocking(f: impl FnOnce() + Send + 'static) -> OnceTaskHandle {
+pub fn spawn_blocking<F, T>(f: F) -> OnceTaskHandle<T>
+where
+    F: FnOnce() -> T,
+{
     ThreadPool::get().spawn_blocking(f)
 }
 
@@ -61,7 +64,7 @@ pub struct ThreadPool {
     /// Inner state of thread pool.
     inner: Mutex<Inner>,
     /// Waiting queue of blocking tasks.
-    queue: Arc<ConcurrentQueue<OnceTaskHandle>>,
+    queue: Arc<ConcurrentQueue<OnceTask>>,
     /// Control workers' sleep and wake up.
     notifier: Condvar,
 }
@@ -106,7 +109,10 @@ impl ThreadPool {
     /// Spawns a FnOnce onto this thread pool.
     ///
     /// Return a [`OnceTaskHandle`] for the spawned task.
-    fn spawn_blocking(&'static self, f: impl FnOnce() + Send + 'static) -> OnceTaskHandle {
+    fn spawn_blocking<F, T>(&'static self, f: F) -> OnceTaskHandle<T>
+    where
+        F: FnOnce() -> T,
+    {
         let (task, handle) = task_and_handle(f);
 
         debug_assert!(self.queue.push(task.into()).is_ok());
