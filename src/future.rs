@@ -1,8 +1,8 @@
 mod maybe_done;
 pub use maybe_done::MaybeDone;
 
-mod pull_fn;
-pub use pull_fn::pull_fn;
+mod poll_fn;
+pub use poll_fn::poll_fn;
 
-mod pull_once;
-pub use pull_once::poll_once;
+mod poll_once;
+pub use poll_once::poll_once;

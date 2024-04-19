@@ -5,7 +5,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-pub fn pull_fn<T, F>(f: F) -> PollFn<F>
+pub fn poll_fn<T, F>(f: F) -> PollFn<F>
 where
     F: FnMut(&mut Context) -> Poll<T>,
 {
