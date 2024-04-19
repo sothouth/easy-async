@@ -24,6 +24,7 @@ pub use executor::spawn;
 
 pub mod blocking;
 pub use blocking::spawn_blocking;
+pub use blocking::OnceTaskHandle;
 
 pub mod waker;
 
@@ -32,8 +33,6 @@ pub mod macros;
 pub mod stream;
 
 pub mod utils;
-
-pub mod task;
 
 #[test]
 fn temp() {}

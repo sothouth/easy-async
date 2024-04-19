@@ -123,7 +123,7 @@ struct OnceTaskVTable {
     get_output: unsafe fn(*const ()) -> *const (),
     destroy: unsafe fn(*const ()),
     run: unsafe fn(*const ()),
-    layout: &'static OnceTaskLayout,
+    // layout: &'static OnceTaskLayout,
 }
 
 union Data<F, T> {
@@ -229,7 +229,7 @@ where
                 get_output: Self::get_output,
                 destroy: Self::destroy,
                 run: Self::run,
-                layout: &Self::LAYOUT,
+                // layout: &Self::LAYOUT,
             }));
 
             raw.data.write(Data {

@@ -18,7 +18,9 @@ use concurrent_queue::ConcurrentQueue;
 
 mod once_task;
 
-use once_task::{task_and_handle, OnceTask, OnceTaskHandle};
+use once_task::{task_and_handle, OnceTask};
+
+pub use once_task::OnceTaskHandle;
 
 /// Runs blocking code on a thread pool.
 ///
@@ -28,7 +30,13 @@ use once_task::{task_and_handle, OnceTask, OnceTaskHandle};
 /// ```no_run
 /// use easy_async::spawn_blocking;
 ///
-/// spawn_blocking(|| println!("now running on a worker thread")).await;
+/// assert_eq!(
+///     spawn_blocking(|| {
+///         println!("now running on a worker thread");
+///         1
+///     }).await,
+///     1
+/// );
 /// ```
 pub fn spawn_blocking<F, T>(f: F) -> OnceTaskHandle<T>
 where
