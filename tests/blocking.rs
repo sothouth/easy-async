@@ -48,4 +48,9 @@ fn sleep() {
     assert!(start.elapsed() > dur);
 }
 
-
+#[test]
+fn get_output() {
+    block_on(async {
+        assert_eq!(spawn_blocking(|| 1).await, 1);
+    });
+}
