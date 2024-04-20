@@ -8,7 +8,7 @@ use tokio::spawn;
 
 fn main() {
     let rt = Builder::new_current_thread().enable_all().build().unwrap();
-    let fut=join!(serve(), client(), client());
+    let fut = join!(serve(), client(), client());
     rt.block_on(fut);
 }
 
