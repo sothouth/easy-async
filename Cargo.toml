@@ -46,5 +46,7 @@ waker-fn = { version = "*" }
 
 [dev-dependencies]
 reqwest = { version = "*" }
+easy-parallel = { version = "*" }
+
 # [target.'cfg(loom)'.dependencies]
 # loom = { version = "0.7", optional = true }
