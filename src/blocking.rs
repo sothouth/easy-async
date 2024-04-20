@@ -16,11 +16,7 @@ use std::time::Duration;
 
 use concurrent_queue::ConcurrentQueue;
 
-mod once_task;
-
-use once_task::{task_and_handle, OnceTask};
-
-pub use once_task::OnceTaskHandle;
+use crate::task::{once_task_and_handle as task_and_handle, OnceTask, OnceTaskHandle};
 
 /// Runs blocking code on a thread pool.
 ///
@@ -37,6 +33,18 @@ pub use once_task::OnceTaskHandle;
 ///     }).await,
 ///     1
 /// );
+/// ```
+///
+/// Read the contents of a file:
+///
+/// ```no_run
+/// use easy_async::block_on;
+/// use easy_async::spawn_blocking;
+/// use std::fs;
+///
+/// # block_on(async {
+/// let contents=spawn_blocking(|| fs::read_to_string("file.txt")).await?;
+/// # std::io::Result::Ok(()) });
 /// ```
 pub fn spawn_blocking<F, T>(f: F) -> OnceTaskHandle<T>
 where

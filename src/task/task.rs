@@ -6,50 +6,60 @@ use std::pin::Pin;
 use std::ptr::{self, NonNull};
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::*;
+use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::task::{RawWaker, RawWakerVTable, Waker};
 
+use crate::executor::Runtime;
 use crate::waker::AtomicWaker;
 
-pub fn task_and_handle<F, T>(func: F) -> (OnceTask, OnceTaskHandle<T>)
+pub(crate) fn task_and_handle<F, T>(future: F, rt: &Arc<Runtime>) -> (Task, TaskHandle<T>)
 where
-    F: FnOnce() -> T,
+    F: Future<Output = T> + Send + 'static,
 {
-    let ptr = RawOnceTask::<F, T>::allocate(func);
+    let ptr = RawTask::<F, T>::allocate(future, rt);
 
-    let task = OnceTask::from_raw(ptr);
-    let handle = OnceTaskHandle::from_raw(ptr);
+    let task = Task::from_raw(ptr);
+    let handle = TaskHandle::from_raw(ptr);
 
     (task, handle)
 }
 
 // Task's state
 
+/// Task is sleeping.
+const SLEEPING: usize = 1 << 0;
+
 /// Task is scheduled.
-const SCHEDULED: usize = 1 << 0;
+const SCHEDULED: usize = 1 << 1;
 /// Task is running.
-const RUNNING: usize = 1 << 1;
+const RUNNING: usize = 1 << 2;
 /// Task is completed.
 ///
 /// The future is end.
-const COMPLETED: usize = 1 << 2;
+const COMPLETED: usize = 1 << 3;
 /// Task is closed.
 ///
 /// The future is end and the output is taken.
-const CLOSED: usize = 1 << 3;
+const CLOSED: usize = 1 << 4;
 
 struct Header {
     state: AtomicUsize,
     refer: AtomicUsize,
     waker: AtomicWaker,
-    vtable: &'static OnceTaskVTable,
+    rt: Arc<Runtime>,
+    queue_id: AtomicUsize,
+    vtable: &'static TaskVTable,
 }
 
 impl Header {
-    fn new(vtable: &'static OnceTaskVTable) -> Self {
+    fn new(vtable: &'static TaskVTable, rt: &Arc<Runtime>) -> Self {
         Self {
-            state: AtomicUsize::new(SCHEDULED),
+            state: AtomicUsize::new(SLEEPING),
             refer: AtomicUsize::new(0),
             waker: AtomicWaker::new(),
+            rt: Arc::clone(rt),
+            queue_id: AtomicUsize::new(rt.local_queues.len()),
             vtable,
         }
     }
@@ -67,12 +77,12 @@ impl Header {
     }
 }
 
-struct OnceTaskLayout {
+struct TaskLayout {
     layout: Layout,
     offset_data: usize,
 }
 
-impl OnceTaskLayout {
+impl TaskLayout {
     const fn new<F, T>() -> Self {
         let header = Layout::new::<Header>();
         let data = Layout::new::<Data<F, T>>();
@@ -112,25 +122,26 @@ impl OnceTaskLayout {
     }
 }
 
-struct OnceTaskVTable {
+struct TaskVTable {
     get_output: unsafe fn(*const ()) -> *const (),
     destroy: unsafe fn(*const ()),
-    run: unsafe fn(*const ()),
+    run: unsafe fn(*const (), usize),
+    schedule: unsafe fn(*const ()),
 }
 
 union Data<F, T> {
-    func: ManuallyDrop<F>,
+    future: ManuallyDrop<F>,
     output: ManuallyDrop<T>,
 }
 
-struct RawOnceTask<F, T> {
+struct RawTask<F, T> {
     header: *const Header,
     data: *mut Data<F, T>,
 }
 
-// Impl const `RawOnceTask`
-impl<F, T> RawOnceTask<F, T> {
-    const LAYOUT: OnceTaskLayout = OnceTaskLayout::new::<F, T>();
+// Impl const `RawTask`
+impl<F, T> RawTask<F, T> {
+    const LAYOUT: TaskLayout = TaskLayout::new::<F, T>();
 
     #[inline]
     const fn from_ptr(ptr: *const ()) -> Self {
@@ -143,15 +154,89 @@ impl<F, T> RawOnceTask<F, T> {
     }
 }
 
-// Impl `OnceTaskVTable` for `RawOnceTask`
-impl<F, T> RawOnceTask<F, T>
+//Impl `RawWakerVTable` for `RawTask`
+impl<F, T> RawTask<F, T>
 where
-    F: FnOnce() -> T,
+    F: Future<Output = T> + Send + 'static,
 {
-    unsafe fn drop_fn(ptr: *const ()) {
+    const VTABLE: RawWakerVTable = RawWakerVTable::new(
+        Self::clone_waker,
+        Self::wake,
+        Self::wake_by_ref,
+        Self::drop_waker,
+    );
+
+    #[inline]
+    unsafe fn clone_waker(ptr: *const ()) -> RawWaker {
         let raw = Self::from_ptr(ptr);
 
-        ManuallyDrop::drop(&mut (*raw.data).func);
+        (*raw.header).increment_refer();
+
+        RawWaker::new(ptr, &Self::VTABLE)
+    }
+
+    #[inline]
+    unsafe fn wake(ptr: *const ()) {
+        Self::wake_by_ref(ptr);
+        Self::drop_waker(ptr);
+    }
+
+    #[inline]
+    unsafe fn wake_by_ref(ptr: *const ()) {
+        let raw = Self::from_ptr(ptr);
+        let header = &*raw.header;
+
+        match header
+            .state
+            .compare_exchange(SLEEPING, SCHEDULED, AcqRel, Acquire)
+        {
+            Ok(_) => {
+                ((*header.vtable).schedule)(ptr);
+            }
+            Err(RUNNING) => {
+                if header
+                    .state
+                    .compare_exchange(RUNNING, SCHEDULED, AcqRel, Acquire)
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            Err(_) => {
+                return;
+            }
+        }
+
+        let queue = header.queue_id.load(Acquire);
+        let handle = Task::from_raw_unchecked(NonNull::new(ptr as *mut ()).unwrap());
+
+        if queue != header.rt.local_queues.len() {
+            if let Err(err) = header.rt.local_queues[queue].push(handle) {
+                let handle = err.into_inner();
+                debug_assert!(header.rt.global_queue.push(handle).is_ok());
+            }
+        } else {
+            debug_assert!(header.rt.global_queue.push(handle).is_ok());
+        }
+    }
+
+    #[inline]
+    unsafe fn drop_waker(ptr: *const ()) {
+        let raw = Self::from_ptr(ptr);
+
+        (*raw.header).decrement_refer(ptr);
+    }
+}
+
+// Impl `TaskVTable` for `RawTask`
+impl<F, T> RawTask<F, T>
+where
+    F: Future<Output = T> + Send + 'static,
+{
+    unsafe fn drop_future(ptr: *const ()) {
+        let raw = Self::from_ptr(ptr);
+
+        ManuallyDrop::drop(&mut (*raw.data).future);
     }
 
     unsafe fn get_output(ptr: *const ()) -> *const () {
@@ -165,8 +250,8 @@ where
         let header = &*raw.header;
 
         match header.state.load(Acquire) {
-            SCHEDULED => Self::drop_fn(ptr),
             COMPLETED => ManuallyDrop::drop(&mut (*raw.data).output),
+            SLEEPING | SCHEDULED => Self::drop_future(ptr),
             _ => {}
         }
 
@@ -176,33 +261,55 @@ where
         alloc::dealloc(ptr as *mut u8, Self::LAYOUT.layout);
     }
 
-    unsafe fn run(ptr: *const ()) {
+    unsafe fn run(ptr: *const (), queue_id: usize) {
         let raw = Self::from_ptr(ptr);
         let header = &*raw.header;
 
-        match header
+        if let Err(cur) = header
             .state
             .compare_exchange(SCHEDULED, RUNNING, AcqRel, Acquire)
         {
-            Ok(_) => {
-                let output = ManuallyDrop::take(&mut (*raw.data).func)();
+            unreachable!("invalid run task state: {}", cur);
+        }
+
+        header.queue_id.store(queue_id, Release);
+
+        let future = Pin::new_unchecked(&mut *(*raw.data).future);
+
+        let waker = ManuallyDrop::new(Waker::from_raw(RawWaker::new(ptr, &Self::VTABLE)));
+        let cx = &mut Context::from_waker(&waker);
+
+        match future.poll(cx) {
+            Poll::Ready(output) => {
+                header.state.store(COMPLETED, Release);
+                Self::drop_future(ptr);
+
+                header.rt.tasks.fetch_sub(1, AcqRel);
+
                 (*raw.data).output = ManuallyDrop::new(output);
 
-                header.state.store(COMPLETED, Release);
+                header.decrement_refer(ptr);
+
                 header.waker.wake();
             }
-            Err(cur) => {
-                unreachable!("invalid run task state: {}", cur);
+            Poll::Pending => {
+                match header
+                    .state
+                    .compare_exchange(RUNNING, SLEEPING, AcqRel, Acquire)
+                {
+                    Ok(_) => {}
+                    Err(_) => {}
+                }
             }
         }
     }
 }
 
-impl<F, T> RawOnceTask<F, T>
+impl<F, T> RawTask<F, T>
 where
-    F: FnOnce() -> T,
+    F: Future<Output = T> + Send + 'static,
 {
-    fn allocate(func: F) -> NonNull<()> {
+    fn allocate(future: F, rt: &Arc<Runtime>) -> NonNull<()> {
         unsafe {
             let ptr = match NonNull::new(alloc::alloc(Self::LAYOUT.layout) as *mut ()) {
                 Some(ptr) => ptr,
@@ -211,15 +318,18 @@ where
 
             let raw = Self::from_ptr(ptr.as_ptr());
 
-            (raw.header as *mut Header).write(Header::new(&OnceTaskVTable {
-                get_output: Self::get_output,
-                destroy: Self::destroy,
-                run: Self::run,
-                // layout: &Self::LAYOUT,
-            }));
+            (raw.header as *mut Header).write(Header::new(
+                &TaskVTable {
+                    get_output: Self::get_output,
+                    destroy: Self::destroy,
+                    run: Self::run,
+                    schedule: Self::wake_by_ref,
+                },
+                rt,
+            ));
 
             raw.data.write(Data {
-                func: ManuallyDrop::new(func),
+                future: ManuallyDrop::new(future),
             });
 
             ptr
@@ -227,30 +337,44 @@ where
     }
 }
 
-pub struct OnceTask {
+pub(crate) struct Task {
     ptr: NonNull<()>,
 }
 
-unsafe impl Send for OnceTask {}
-unsafe impl Sync for OnceTask {}
+unsafe impl Send for Task {}
+unsafe impl Sync for Task {}
 
-impl OnceTask {
+impl Task {
     fn from_raw(ptr: NonNull<()>) -> Self {
         unsafe { (*(ptr.as_ptr() as *const Header)).increment_refer() };
 
         Self { ptr }
     }
 
-    pub fn run(self) {
+    unsafe fn from_raw_unchecked(ptr: NonNull<()>) -> Self {
+        Self { ptr }
+    }
+
+    pub(crate) fn run(self, queue_id: usize) {
         let ptr = self.ptr.as_ptr();
         let header = ptr as *const Header;
         mem::forget(self);
 
-        unsafe { ((*header).vtable.run)(ptr) };
+        unsafe { ((*header).vtable.run)(ptr, queue_id) };
+    }
+
+    pub(crate) fn schedule(self) {
+        let ptr = self.ptr.as_ptr();
+        let header = unsafe { &*(ptr as *const Header) };
+        mem::forget(self);
+
+        header.rt.tasks.fetch_add(1, AcqRel);
+
+        unsafe { (header.vtable.schedule)(ptr) };
     }
 }
 
-impl Drop for OnceTask {
+impl Drop for Task {
     fn drop(&mut self) {
         let ptr = self.ptr.as_ptr();
 
@@ -258,17 +382,17 @@ impl Drop for OnceTask {
     }
 }
 
-pub struct OnceTaskHandle<T> {
+pub struct TaskHandle<T> {
     ptr: NonNull<()>,
     _marker: PhantomData<T>,
 }
 
-unsafe impl<T: Send> Send for OnceTaskHandle<T> {}
-unsafe impl<T: Sync> Sync for OnceTaskHandle<T> {}
+unsafe impl<T: Send> Send for TaskHandle<T> {}
+unsafe impl<T: Sync> Sync for TaskHandle<T> {}
 
-impl<T> Unpin for OnceTaskHandle<T> {}
+impl<T> Unpin for TaskHandle<T> {}
 
-impl<T> OnceTaskHandle<T> {
+impl<T> TaskHandle<T> {
     fn from_raw(ptr: NonNull<()>) -> Self {
         unsafe { (*(ptr.as_ptr() as *const Header)).increment_refer() };
 
@@ -302,7 +426,7 @@ impl<T> OnceTaskHandle<T> {
     }
 }
 
-impl<T> Drop for OnceTaskHandle<T> {
+impl<T> Drop for TaskHandle<T> {
     fn drop(&mut self) {
         let ptr = self.ptr.as_ptr();
 
@@ -310,7 +434,7 @@ impl<T> Drop for OnceTaskHandle<T> {
     }
 }
 
-impl<T> Future for OnceTaskHandle<T> {
+impl<T> Future for TaskHandle<T> {
     type Output = T;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {

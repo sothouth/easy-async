@@ -19,15 +19,17 @@ mod block_on;
 pub use block_on::block_on;
 pub use block_on::block_on_naive;
 
+mod task;
+pub use task::OnceTaskHandle;
+pub use task::TaskHandle;
+
 pub mod executor;
 pub use executor::spawn;
 
 pub mod blocking;
 pub use blocking::spawn_blocking;
-pub use blocking::OnceTaskHandle;
 
 pub mod unblock;
-
 
 pub mod waker;
 
@@ -36,8 +38,6 @@ pub mod macros;
 pub mod stream;
 
 pub mod utils;
-
-// pub mod task;
 
 #[test]
 fn temp() {}
