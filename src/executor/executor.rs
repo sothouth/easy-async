@@ -9,12 +9,15 @@ use std::thread;
 use concurrent_queue::ConcurrentQueue;
 
 mod task;
-use task::{task_and_handle, TaskHandle};
+use task::{task_and_handle, Task, TaskHandle};
 
 static GLOBAL: OnceLock<Executor> = OnceLock::new();
 
 /// spawn a task
-pub fn spawn(future: impl Future<Output = ()> + Send + 'static) -> TaskHandle {
+pub fn spawn<F, T>(future: F) -> TaskHandle<T>
+where
+    F: Future<Output = T> + Send + 'static,
+{
     GLOBAL.get_or_init(Executor::new).spawn(future)
 }
 
@@ -54,7 +57,10 @@ impl Executor {
         self.rt.tasks.load(Acquire) == 0
     }
 
-    pub fn spawn(&self, future: impl Future<Output = ()> + Send + 'static) -> TaskHandle {
+    pub fn spawn<F, T>(&self, future: F) -> TaskHandle<T>
+    where
+        F: Future<Output = T> + Send + 'static,
+    {
         let (task, handle) = task_and_handle(future, &self.rt);
 
         task.schedule();
@@ -79,9 +85,9 @@ impl Drop for Executor {
 
 pub struct Runtime {
     /// Global queue, all task will be sceduled in it.
-    pub(crate) global_queue: ConcurrentQueue<TaskHandle>,
+    pub(crate) global_queue: ConcurrentQueue<Task>,
     /// All worker's queues.
-    pub(crate) local_queues: Vec<Arc<ConcurrentQueue<TaskHandle>>>,
+    pub(crate) local_queues: Vec<Arc<ConcurrentQueue<Task>>>,
     /// Keep at most one worker in a loop search with None as the answer.
     pub(crate) searching: Mutex<()>,
     /// Counter for task number.
@@ -111,7 +117,7 @@ pub struct Worker {
     /// The runtime.
     rt: Arc<Runtime>,
     /// The worker's task queue.
-    queue: Arc<ConcurrentQueue<TaskHandle>>,
+    queue: Arc<ConcurrentQueue<Task>>,
     /// If true, the worker can loop search with None as the answer.
     searching: AtomicBool,
     /// The times this worker polls.
@@ -119,7 +125,7 @@ pub struct Worker {
 }
 
 impl Worker {
-    pub fn new(id: usize, rt: Arc<Runtime>, queue: Arc<ConcurrentQueue<TaskHandle>>) -> Self {
+    pub fn new(id: usize, rt: Arc<Runtime>, queue: Arc<ConcurrentQueue<Task>>) -> Self {
         Self {
             id,
             rt,
@@ -136,7 +142,7 @@ impl Worker {
         }
     }
 
-    pub fn next(&self) -> TaskHandle {
+    pub fn next(&self) -> Task {
         let task = self.next_by(|| {
             // Get tast from self queue.
             if let Ok(t) = self.queue.pop() {
@@ -178,7 +184,7 @@ impl Worker {
         task
     }
 
-    pub fn next_by(&self, mut search: impl FnMut() -> Option<TaskHandle>) -> TaskHandle {
+    pub fn next_by(&self, mut search: impl FnMut() -> Option<Task>) -> Task {
         self.searching.store(true, Release);
         loop {
             let mut _token = None;

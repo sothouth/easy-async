@@ -113,7 +113,6 @@ impl OnceTaskLayout {
 }
 
 struct OnceTaskVTable {
-    drop_fn: unsafe fn(*const ()),
     get_output: unsafe fn(*const ()) -> *const (),
     destroy: unsafe fn(*const ()),
     run: unsafe fn(*const ()),
@@ -167,7 +166,7 @@ where
         let header = &*raw.header;
 
         match header.state.load(Acquire) {
-            SCHEDULED => (header.vtable.drop_fn)(ptr),
+            SCHEDULED => Self::drop_fn(ptr),
             COMPLETED => ManuallyDrop::drop(&mut (*raw.data).output),
             _ => {}
         }
@@ -215,7 +214,6 @@ where
             let raw = Self::from_ptr(ptr.as_ptr());
 
             (raw.header as *mut Header).write(Header::new(&OnceTaskVTable {
-                drop_fn: Self::drop_fn,
                 get_output: Self::get_output,
                 destroy: Self::destroy,
                 run: Self::run,
