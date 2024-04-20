@@ -367,10 +367,12 @@ impl Task {
 
     pub fn schedule(self) {
         let ptr = self.ptr.as_ptr();
-        let header = ptr as *const Header;
+        let header = unsafe { &*(ptr as *const Header) };
         mem::forget(self);
 
-        unsafe { ((*header).vtable.schedule)(ptr) };
+        header.rt.tasks.fetch_add(1, AcqRel);
+
+        unsafe { (header.vtable.schedule)(ptr) };
     }
 }
 
