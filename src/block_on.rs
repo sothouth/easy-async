@@ -5,6 +5,23 @@ use std::task::{Context, Poll, Waker};
 
 use crate::waker::{parker_and_waker, Parker};
 
+/// Blocks the current thread until the given future is complete.
+///
+/// # Examples
+///
+/// ```
+/// # use std::thread;
+/// # use std::time::Duration;
+/// use easy_async::block_on;
+///
+/// let n=block_on(async {
+///     thread::sleep(Duration::from_millis(100));
+///     println!("hello");
+///     1
+/// });
+/// assert_eq!(n, 1);
+/// ```
+///
 pub fn block_on<F: Future>(fut: F) -> F::Output {
     let mut fut = pin::pin!(fut);
 
@@ -37,6 +54,23 @@ pub fn block_on<F: Future>(fut: F) -> F::Output {
     })
 }
 
+/// Blocks the current thread until the given future is complete.
+///
+/// # Examples
+///
+/// ```
+/// # use std::thread;
+/// # use std::time::Duration;
+/// use easy_async::block_on_naive;
+///
+/// let n=block_on_naive(async {
+///     thread::sleep(Duration::from_millis(100));
+///     println!("hello");
+///     1
+/// });
+/// assert_eq!(n, 1);
+/// ```
+///
 pub fn block_on_naive<F: Future>(fut: F) -> F::Output {
     let mut fut = pin::pin!(fut);
     let (parker, waker) = parker_and_waker();

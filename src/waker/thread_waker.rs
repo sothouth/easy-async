@@ -24,6 +24,7 @@ fn raw_drop(ptr: *const ()) {
     unsafe { Arc::decrement_strong_count(ptr as *const Thread) };
 }
 
+/// Creates a waker for the current thread.
 pub fn current_thread_waker() -> Waker {
     thread_local! {
         static THREAD: Arc<Thread> = Arc::new(thread::current());

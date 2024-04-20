@@ -4,10 +4,19 @@ use std::task::Waker;
 
 use super::OptionWaker;
 
+/// Idle state
 const WAITING: usize = 0b00;
+
+/// The waker currently registered with the [`AtomicWaker`] cell is being woken.
 const WAKING: usize = 0b01;
+
+/// A new waker value is being registered with the [`AtomicWaker`] cell.
 const REGISTERING: usize = 0b10;
 
+/// A thread-safe waker that can be shared between threads.
+///
+/// [`AtomicWaker`] wraps a  [`OptionWaker`] and provides atomic operations
+/// for its registration and waking.
 pub struct AtomicWaker {
     state: AtomicUsize,
     waker: OptionWaker,
@@ -17,6 +26,7 @@ unsafe impl Send for AtomicWaker {}
 unsafe impl Sync for AtomicWaker {}
 
 impl AtomicWaker {
+    /// Create an empty [`AtomicWaker`].
     pub fn new() -> Self {
         Self {
             state: AtomicUsize::new(WAITING),
@@ -24,12 +34,16 @@ impl AtomicWaker {
         }
     }
 
+    /// Calls `wake` on the last [`Waker`] passed to `register`.
+    ///
+    /// If `register` has not been called yet, then this does nothing.
     #[inline]
     pub fn wake(&self) {
         // don't need to check waker, because NOOP will do nothing
         self.take().wake();
     }
 
+    /// Returns the last [`Waker`] passed to `register`, so that the user can wake it.
     pub fn take(&self) -> Waker {
         match self.state.fetch_or(WAKING, AcqRel) {
             WAITING => {
@@ -46,6 +60,7 @@ impl AtomicWaker {
         }
     }
 
+    /// Registers the waker to be notified on calls to `wake`.
     pub fn register(&self, waker: &Waker) {
         match self
             .state

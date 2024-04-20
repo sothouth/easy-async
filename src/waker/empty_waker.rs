@@ -1,4 +1,4 @@
-/// can use NOOP
+//! can use [`std::task::Waker::noop`] instead
 use std::ptr;
 use std::task::{RawWaker, RawWakerVTable, Waker};
 

@@ -5,6 +5,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+/// Creates a future that wraps a function returning [`Poll`].
 pub fn poll_fn<T, F>(f: F) -> PollFn<F>
 where
     F: FnMut(&mut Context) -> Poll<T>,
@@ -12,6 +13,9 @@ where
     PollFn(f)
 }
 
+/// A Future that wraps a function returning [`Poll`].
+///
+/// This `struct` is created by [`poll_fn()`].
 pub struct PollFn<F>(F);
 
 impl<F: Unpin> Unpin for PollFn<F> {}

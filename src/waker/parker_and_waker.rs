@@ -1,23 +1,34 @@
-//! A poor imitation of Parking.
-//! use parking as _;
-
-use std::sync::{
-    atomic::{AtomicUsize, Ordering::*},
-    Arc, Condvar, Mutex,
-};
+//! Imitation of `Parking`.
 
 use std::cell::Cell;
-use std::fmt::{self, Debug};
+use std::fmt;
 use std::marker::PhantomData;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering::*;
+use std::sync::{Arc, Condvar, Mutex};
 use std::task::{Wake, Waker};
 use std::time::{Duration, Instant};
 
+/// Creates a parker and an associated waker.
+///
+/// # Examples
+///
+/// ```
+/// let (p, w) = easy_async::waker::parker_and_waker();
+/// ```
 #[inline]
 pub fn parker_and_waker() -> (Parker, Waker) {
     let (parker, unparker) = pair();
     (parker, Waker::from(unparker))
 }
 
+/// Creates a parker and an associated unparker.
+///
+/// # Examples
+///
+/// ```
+/// let (p, u) = easy_async::waker::pair();
+/// ```.
 #[inline]
 pub fn pair() -> (Parker, Unparker) {
     let p = Parker::new();
@@ -25,11 +36,13 @@ pub fn pair() -> (Parker, Unparker) {
     (p, u)
 }
 
+/// Waits for a notification.
 pub struct Parker {
     unparker: Unparker,
     _marker: PhantomData<Cell<()>>,
 }
 
+/// Notifies a parker.
 pub struct Unparker {
     inner: Arc<Inner>,
 }
@@ -45,6 +58,16 @@ const PARKED: usize = 1;
 const NOTIFIED: usize = 2;
 
 impl Parker {
+    /// Creates a new parker.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use easy_async::waker::Parker;
+    ///
+    /// let p = Parker::new();
+    /// ```
+    ///
     pub fn new() -> Self {
         Self {
             unparker: Unparker {
@@ -58,24 +81,36 @@ impl Parker {
         }
     }
 
+    /// Blocks until notified and then goes back into unnotified state.
     pub fn park(&self) {
         self.unparker.inner.park();
     }
 
+    /// Blocks until notified and then goes back into unnotified state,
+    /// or times out after `duration`.
     pub fn park_timeout(&self, timeout: Duration) -> bool {
         self.unparker.inner.park_timeout(timeout)
     }
 
+    /// Blocks until notified and then goes back into unnotified state,
+    /// or times out at `instant`.
     pub fn park_deadline(&self, instant: Instant) -> bool {
         self.unparker
             .inner
             .park_timeout(instant.saturating_duration_since(Instant::now()))
     }
 
+    /// Notifies the parker.
+    ///
+    /// Returns `true` if this call is the first to notify the parker,
+    /// or `false` if the parker was already notified.
     pub fn unpark(&self) -> bool {
         self.unparker.inner.unpark()
     }
 
+    /// Returns a handle for unparking.
+    ///
+    /// The returned [`Unparker`] can be cloned and shared among threads.
     pub fn unparker(&self) -> Unparker {
         self.unparker.clone()
     }
@@ -87,21 +122,27 @@ impl Default for Parker {
     }
 }
 
-impl Debug for Parker {
+impl fmt::Debug for Parker {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("Parker { .. }")
     }
 }
 
 impl Unparker {
+    /// Notifies the associated parker.
+    ///
+    /// Returns `true` if this call is the first to notify the parker,
+    /// or `false` if the parker was already notified.
     pub fn unpark(&self) -> bool {
         self.inner.unpark()
     }
 
+    /// Indicates whether two unparkers will unpark the same parker.
     pub fn same_parker(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.inner, &other.inner)
     }
 
+    /// Indicates whether this unparker will unpark the associated parker.
     pub fn will_unpark(&self, other: &Parker) -> bool {
         Arc::ptr_eq(&self.inner, &other.unparker.inner)
     }
@@ -121,7 +162,7 @@ impl From<Unparker> for Waker {
     }
 }
 
-impl Debug for Unparker {
+impl fmt::Debug for Unparker {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("Unparker { .. }")
     }

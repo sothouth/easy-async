@@ -1,6 +1,28 @@
-//! No output executor
+//! Async executor.
 //!
-//! In \tests\executor.rs: no_output_many_async 10 times faster than smol_many_async
+//! provide a simple executor.
+//!
+//! Difference with [`smol`](https://docs.rs/smol):
+//!
+//! * Use a [`Mutex`] and worker local [`AtomicBool`] instead the `Sleepers` and `Ticker`.
+//! * Fixed number of workers
+//! * `task` can't be cancelled.
+//! * `task` will try to directly scehduled in the worker's queue.
+//! * Add a `RESERVE_SIZE` to reserve some capacity for future task self-scheduling.
+//! * Less steal.
+//!
+//! # Examples
+//!
+//! ```
+//! use easy_async::spawn;
+//! use easy_async::block_on;
+//!
+//! let task=spawn(async {
+//!     println!("hello");
+//! });
+//!
+//! block_on(task);
+//! ```
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::*};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -12,7 +34,20 @@ use crate::task::{task_and_handle, Task, TaskHandle};
 
 static GLOBAL: OnceLock<Executor> = OnceLock::new();
 
-/// spawn a task
+/// spawn a task, return a [`TaskHandle`].
+///
+/// # Examples
+///
+/// ```
+/// use easy_async::spawn;
+/// use easy_async::block_on;
+///
+/// let task=spawn(async {
+///     println!("hello");
+/// });
+///
+/// block_on(task);
+/// ```
 pub fn spawn<F, T>(future: F) -> TaskHandle<T>
 where
     F: Future<Output = T> + Send + 'static,
@@ -20,9 +55,16 @@ where
     GLOBAL.get_or_init(Executor::new).spawn(future)
 }
 
+/// Get the number of available tasks.
 pub fn task_count() -> usize {
     GLOBAL.get_or_init(Executor::new).state()
 }
+
+/// Size of the worker's queue.
+const LOCAL_QUEUE_SIZE: usize = 512;
+
+/// Worker will try to reserve some capacity for future task self-scheduling.
+const RESERVE_SIZE: usize = 64;
 
 struct Executor {
     rt: Arc<Runtime>,
@@ -78,6 +120,7 @@ impl Drop for Executor {
     }
 }
 
+/// Core of the executor.
 pub struct Runtime {
     /// Global queue, all task will be sceduled in it.
     pub(crate) global_queue: ConcurrentQueue<Task>,
@@ -88,9 +131,6 @@ pub struct Runtime {
     /// Counter for task number.
     pub(crate) tasks: AtomicUsize,
 }
-
-const LOCAL_QUEUE_SIZE: usize = 512;
-const RESERVE_SIZE: usize = 64;
 
 impl Runtime {
     pub fn new() -> Self {
@@ -199,6 +239,7 @@ impl Worker {
     }
 }
 
+/// Steals some items from one queue into another.
 fn steal<T>(src: &ConcurrentQueue<T>, dst: &ConcurrentQueue<T>, global: &ConcurrentQueue<T>) {
     for _ in 0..((src.len() + 1) / 2).min(dst.capacity().unwrap() - dst.len() - RESERVE_SIZE) {
         match src.pop() {

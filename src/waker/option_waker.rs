@@ -5,21 +5,24 @@ use std::{fmt, ptr};
 
 const NOOP: &'static Waker = Waker::noop();
 
-/// Another version of `UnsafeCell<Option<Waker>>`, maybe faster.
+/// Another version of [`UnsafeCell<Option<Waker>>`], maybe faster.
 #[repr(transparent)]
 pub struct OptionWaker(UnsafeCell<Waker>);
 
 impl OptionWaker {
+    /// Create an `OptionWaker`, with a [`NOOP`] waker.
     #[inline]
     pub fn new() -> Self {
         Self(UnsafeCell::new(NOOP.clone()))
     }
 
+    /// Wake the waker.
     #[inline]
     pub fn wake(&self) {
         self.take().wake();
     }
 
+    /// Wake the waker by reference.
     #[inline]
     pub fn wake_by_ref(&self) {
         unsafe { (*self.0.get()).wake_by_ref() };
