@@ -127,7 +127,6 @@ struct TaskVTable {
     destroy: unsafe fn(*const ()),
     run: unsafe fn(*const (), usize),
     schedule: unsafe fn(*const ()),
-    clone_waker: unsafe fn(*const ()) -> RawWaker,
 }
 
 union Data<F, T> {
@@ -325,7 +324,6 @@ where
                     destroy: Self::destroy,
                     run: Self::run,
                     schedule: Self::wake_by_ref,
-                    clone_waker: Self::clone_waker,
                 },
                 rt,
             ));

@@ -6,9 +6,38 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use easy_async::block_on;
-use easy_async::blocking::spawn_blocking;
+use easy_async::spawn_blocking;
 
 use easy_async::future::poll_once;
+
+#[test]
+fn smol_smoke() {
+    use smol::block_on;
+    use smol::unblock;
+
+    const N: usize = 10000;
+    const M: usize = 1000;
+    let a = Arc::new(AtomicUsize::new(0));
+
+    let mut tasks = Vec::with_capacity(N);
+
+    let start = std::time::Instant::now();
+    for _ in 0..N {
+        let a = a.clone();
+        tasks.push(unblock(move || {
+            for _ in 0..M {
+                a.fetch_add(1, SeqCst);
+            }
+        }));
+    }
+
+    for t in tasks {
+        block_on(t);
+    }
+
+    assert_eq!(a.load(Acquire), N * M);
+    println!("smol: {}ms", start.elapsed().as_millis());
+}
 
 #[test]
 fn smoke() {
@@ -18,6 +47,7 @@ fn smoke() {
 
     let mut tasks = Vec::with_capacity(N);
 
+    let start = std::time::Instant::now();
     for _ in 0..N {
         let a = a.clone();
         tasks.push(spawn_blocking(move || {
@@ -32,6 +62,7 @@ fn smoke() {
     }
 
     assert_eq!(a.load(Acquire), N * M);
+    println!("easy-async: {}ms", start.elapsed().as_millis());
 }
 
 #[test]

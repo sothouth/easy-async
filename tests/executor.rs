@@ -38,5 +38,5 @@ fn no_output_many_async() {
         block_on(task);
     }
     assert!(complated());
-    println!("{}ms", start.elapsed().as_millis());
+    println!("easy-async: {}ms", start.elapsed().as_millis());
 }
