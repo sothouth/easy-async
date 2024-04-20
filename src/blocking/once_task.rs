@@ -116,7 +116,6 @@ struct OnceTaskVTable {
     get_output: unsafe fn(*const ()) -> *const (),
     destroy: unsafe fn(*const ()),
     run: unsafe fn(*const ()),
-    // layout: &'static OnceTaskLayout,
 }
 
 union Data<F, T> {
@@ -187,7 +186,6 @@ where
         {
             Ok(_) => {
                 let output = ManuallyDrop::take(&mut (*raw.data).func)();
-                Self::drop_fn(ptr);
                 (*raw.data).output = ManuallyDrop::new(output);
 
                 header.state.store(COMPLETED, Release);
@@ -289,7 +287,7 @@ impl<T> OnceTaskHandle<T> {
             .compare_exchange(COMPLETED, CLOSED, AcqRel, Acquire)
         {
             Ok(_) => Poll::Ready(Some(unsafe {
-                ptr::read(((*header).vtable.get_output)(ptr) as *const T)
+                ptr::read((header.vtable.get_output)(ptr) as *const T)
             })),
             Err(state) => {
                 if state & CLOSED != 0 {

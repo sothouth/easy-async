@@ -12,7 +12,7 @@ use easy_async::future::poll_once;
 
 #[test]
 fn smoke() {
-    const N: usize = 1000;
+    const N: usize = 10000;
     const M: usize = 1000;
     let a = Arc::new(AtomicUsize::new(0));
 
@@ -36,7 +36,7 @@ fn smoke() {
 
 #[test]
 fn sleep() {
-    let dur = Duration::from_millis(100);
+    let dur = Duration::from_millis(300);
     let start = Instant::now();
 
     block_on(async {
