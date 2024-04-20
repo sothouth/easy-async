@@ -1,18 +1,12 @@
-use std::alloc;
-use std::alloc::Layout;
+use std::alloc::{self, Layout};
 use std::future::Future;
 use std::marker::PhantomData;
-use std::mem;
-use std::mem::ManuallyDrop;
+use std::mem::{self, ManuallyDrop};
 use std::pin::Pin;
-use std::ptr;
-use std::ptr::NonNull;
+use std::ptr::{self, NonNull};
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::*;
 use std::task::{Context, Poll};
-// use std::task::{RawWaker, RawWakerVTable, Waker};
-
-// use crossbeam_utils::CachePadded;
 
 use crate::waker::AtomicWaker;
 
@@ -144,16 +138,14 @@ impl<F, T> RawOnceTask<F, T> {
     const fn from_ptr(ptr: *const ()) -> Self {
         let ptr = ptr as *const u8;
 
-        unsafe {
-            Self {
-                header: ptr as *const Header,
-                data: ptr.add(Self::LAYOUT.offset_data) as *mut Data<F, T>,
-            }
+        Self {
+            header: ptr as *const Header,
+            data: unsafe { ptr.add(Self::LAYOUT.offset_data) } as *mut Data<F, T>,
         }
     }
 }
 
-// Impl `TaskVTable` for `RawOnceTask`
+// Impl `OnceTaskVTable` for `RawOnceTask`
 impl<F, T> RawOnceTask<F, T>
 where
     F: FnOnce() -> T,
@@ -172,37 +164,35 @@ where
 
     unsafe fn destroy(ptr: *const ()) {
         let raw = Self::from_ptr(ptr);
-        let header = &*(raw.header as *const Header);
+        let header = &*raw.header;
 
         match header.state.load(Acquire) {
-            SCHEDULED => {
-                (header.vtable.drop_fn)(ptr);
-            }
-            COMPLETED => {
-                let _ = (header.vtable.get_output)(ptr);
-            }
+            SCHEDULED => (header.vtable.drop_fn)(ptr),
+            COMPLETED => ManuallyDrop::drop(&mut (*raw.data).output),
             _ => {}
         }
 
         (raw.header as *mut Header).drop_in_place();
-        (raw.data as *mut Data<F, T>).drop_in_place();
+        raw.data.drop_in_place();
 
         alloc::dealloc(ptr as *mut u8, Self::LAYOUT.layout);
     }
 
     unsafe fn run(ptr: *const ()) {
         let raw = Self::from_ptr(ptr);
+        let header = &*raw.header;
 
-        match (*raw.header)
+        match header
             .state
             .compare_exchange(SCHEDULED, RUNNING, AcqRel, Acquire)
         {
             Ok(_) => {
                 let output = ManuallyDrop::take(&mut (*raw.data).func)();
+                Self::drop_fn(ptr);
                 (*raw.data).output = ManuallyDrop::new(output);
 
-                (*raw.header).state.store(COMPLETED, Release);
-                (*raw.header).waker.wake();
+                header.state.store(COMPLETED, Release);
+                header.waker.wake();
             }
             Err(cur) => {
                 unreachable!("invalid run task state: {}", cur);
@@ -294,26 +284,23 @@ impl<T> OnceTaskHandle<T> {
 
     fn poll_task(&mut self, cx: &mut Context<'_>) -> Poll<Option<T>> {
         let ptr = self.ptr.as_ptr();
-        let header = ptr as *const Header;
+        let header = unsafe { &*(ptr as *const Header) };
 
-        match unsafe {
-            (*header)
-                .state
-                .compare_exchange(COMPLETED, CLOSED, AcqRel, Acquire)
-        } {
-            Ok(_) => {
-                return Poll::Ready(Some(unsafe {
-                    ptr::read(((*header).vtable.get_output)(ptr) as *const T)
-                }));
-            }
+        match header
+            .state
+            .compare_exchange(COMPLETED, CLOSED, AcqRel, Acquire)
+        {
+            Ok(_) => Poll::Ready(Some(unsafe {
+                ptr::read(((*header).vtable.get_output)(ptr) as *const T)
+            })),
             Err(state) => {
                 if state & CLOSED != 0 {
                     return Poll::Ready(None);
                 }
 
-                unsafe { (*header).waker.register(cx.waker()) };
+                header.waker.register(cx.waker());
 
-                return Poll::Pending;
+                Poll::Pending
             }
         }
     }

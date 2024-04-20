@@ -37,5 +37,7 @@ pub mod stream;
 
 pub mod utils;
 
+pub mod task;
+
 #[test]
 fn temp() {}

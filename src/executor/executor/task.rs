@@ -3,7 +3,8 @@ use std::fmt;
 use std::future::Future;
 use std::mem::ManuallyDrop;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicUsize, Ordering::*};
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering::*;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
