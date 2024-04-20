@@ -10,6 +10,20 @@ use std::task::{Context, Poll};
 
 use crate::waker::AtomicWaker;
 
+/// Creates a [`OnceTask`] and a corresponding [`OnceTaskHandle`] for a given closure.
+///
+/// The function takes a closure `func` that is to be executed.
+/// It returns a tuple containing a [`OnceTask`], which represents the executable task, and
+/// a [`OnceTaskHandle`], which can be used to poll the task and retrieve its output.
+///
+/// # Examples
+///
+/// ```no_run
+/// let (task, handle) = task_and_handle(|| {
+///     // Perform some work...
+///     42 // Return a value
+/// });
+/// ```
 pub(crate) fn task_and_handle<F, T>(func: F) -> (OnceTask, OnceTaskHandle<T>)
 where
     F: FnOnce() -> T,
@@ -30,13 +44,19 @@ const SCHEDULED: usize = 1 << 0;
 const RUNNING: usize = 1 << 1;
 /// Task is completed.
 ///
-/// The future is end.
+/// This flag is set when the function has been runned.
 const COMPLETED: usize = 1 << 2;
 /// Task is closed.
 ///
-/// The future is end and the output is taken.
+/// This flag is set when the function has ended and its output has been consumed.
 const CLOSED: usize = 1 << 3;
 
+/// The [`Header`] struct contains metadata for the once-task.
+///
+/// It includes the current state of the task, a reference counter,
+/// an [`AtomicWaker`] for waking up the task,
+/// and a reference to the [`OnceTaskVTable`] for
+/// dynamic dispatch of functions related to task management.
 struct Header {
     state: AtomicUsize,
     refer: AtomicUsize,
@@ -67,6 +87,10 @@ impl Header {
     }
 }
 
+/// The [`OnceTaskLayout`] struct defines the memory layout for a once-task.
+///
+/// It includes the combined [`Layout`] of the [`Header`] and the [`Data`] and
+/// the offset at which the [`Data`] starts within the layout.
 struct OnceTaskLayout {
     layout: Layout,
     offset_data: usize,
@@ -112,17 +136,25 @@ impl OnceTaskLayout {
     }
 }
 
+/// The [`OnceTaskVTable`] struct contains function pointers for operations on [`OnceTask`].
+///
+/// It includes functions for retrieving the output of a completed task,
+/// destroying the task, and running the task.
 struct OnceTaskVTable {
     get_output: unsafe fn(*const ()) -> *const (),
     destroy: unsafe fn(*const ()),
     run: unsafe fn(*const ()),
 }
 
+/// The [`Data`] union holds the closure to be executed or the output of the closure.
 union Data<F, T> {
     func: ManuallyDrop<F>,
     output: ManuallyDrop<T>,
 }
 
+/// The [`RawOnceTask`] struct is a low-level representation of a once-executable task.
+///
+/// It contains pointers to the [`Header`] and [`Data`] of the task.
 struct RawOnceTask<F, T> {
     header: *const Header,
     data: *mut Data<F, T>,
@@ -202,6 +234,9 @@ impl<F, T> RawOnceTask<F, T>
 where
     F: FnOnce() -> T,
 {
+    /// Allocates a new once-task based on [`OnceTaskLayout`] and the given closure.
+    ///
+    /// Return a pointer to the once-task.
     fn allocate(func: F) -> NonNull<()> {
         unsafe {
             let ptr = match NonNull::new(alloc::alloc(Self::LAYOUT.layout) as *mut ()) {
@@ -227,6 +262,9 @@ where
     }
 }
 
+/// The [`OnceTask`] struct represents a task.
+///
+/// It is used by [`crate::blocking`].
 pub(crate) struct OnceTask {
     ptr: NonNull<()>,
 }
@@ -241,6 +279,7 @@ impl OnceTask {
         Self { ptr }
     }
 
+    /// Runs the function.
     pub(crate) fn run(self) {
         let ptr = self.ptr.as_ptr();
         let header = ptr as *const Header;
@@ -258,6 +297,9 @@ impl Drop for OnceTask {
     }
 }
 
+/// The [`OnceTaskHandle`] struct is a handle to a [`OnceTask`].
+///
+/// It implements [`Future`] and can be used to poll the task and retrieve its output.
 pub struct OnceTaskHandle<T> {
     ptr: NonNull<()>,
     _marker: PhantomData<T>,

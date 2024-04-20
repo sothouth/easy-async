@@ -13,6 +13,20 @@ use std::task::{RawWaker, RawWakerVTable, Waker};
 use crate::executor::Runtime;
 use crate::waker::AtomicWaker;
 
+/// Creates a [`Task`] and a corresponding [`TaskHandle`] for a given [`Future`].
+///
+/// The function takes a `future` that is to be executed asynchronously.
+/// It returns a tuple containing a [`Task`], which represents the executable task, and
+/// a [`TaskHandle`], which can be used to poll the task and retrieve its output.
+///
+/// # Examples
+///
+/// ```no_run
+/// let (task, handle) = task_and_handle(async move {
+///     // Perform some work...
+///     42 // Return a value
+/// });
+/// ```
 pub(crate) fn task_and_handle<F, T>(future: F, rt: &Arc<Runtime>) -> (Task, TaskHandle<T>)
 where
     F: Future<Output = T> + Send + 'static,
@@ -36,13 +50,21 @@ const SCHEDULED: usize = 1 << 1;
 const RUNNING: usize = 1 << 2;
 /// Task is completed.
 ///
-/// The future is end.
+/// This flag is set when the function has been runned.
 const COMPLETED: usize = 1 << 3;
 /// Task is closed.
 ///
-/// The future is end and the output is taken.
+/// This flag is set when the function has ended and its output has been consumed.
 const CLOSED: usize = 1 << 4;
 
+/// The [`Header`] struct contains metadata for the task.
+///
+/// It includes the current state of the task,
+/// a reference counter, an [`AtomicWaker`] for waking up the task,
+/// and a reference to the [`TaskVTable`] for
+/// dynamic dispatch of functions related to task management.
+///
+/// And also contains the task will be scheduled queue id and the [`Runtime`].
 struct Header {
     state: AtomicUsize,
     refer: AtomicUsize,
@@ -77,6 +99,10 @@ impl Header {
     }
 }
 
+/// The [`TaskLayout`] struct defines the memory layout for a once-task.
+///
+/// It includes the combined [`Layout`] of the [`Header`] and the [`Data`] and
+/// the offset at which the [`Data`] starts within the layout.
 struct TaskLayout {
     layout: Layout,
     offset_data: usize,
@@ -122,6 +148,10 @@ impl TaskLayout {
     }
 }
 
+/// The [`TaskVTable`] struct contains function pointers for operations on [`Task`].
+///
+/// It includes functions for retrieving the output of a completed task,
+/// destroying the task, running the task, and scheduling the task.
 struct TaskVTable {
     get_output: unsafe fn(*const ()) -> *const (),
     destroy: unsafe fn(*const ()),
@@ -129,11 +159,15 @@ struct TaskVTable {
     schedule: unsafe fn(*const ()),
 }
 
+/// The [`Data`] union holds the closure to be executed or the output of the closure.
 union Data<F, T> {
     future: ManuallyDrop<F>,
     output: ManuallyDrop<T>,
 }
 
+/// The [`RawTask`] struct is a low-level representation of a task.
+///
+/// It contains pointers to the [`Header`] and [`Data`] of the task.
 struct RawTask<F, T> {
     header: *const Header,
     data: *mut Data<F, T>,
@@ -309,6 +343,9 @@ impl<F, T> RawTask<F, T>
 where
     F: Future<Output = T> + Send + 'static,
 {
+    /// Allocates a new once-task based on [`TaskLayout`] and the given closure.
+    ///
+    /// Return a pointer to the task.
     fn allocate(future: F, rt: &Arc<Runtime>) -> NonNull<()> {
         unsafe {
             let ptr = match NonNull::new(alloc::alloc(Self::LAYOUT.layout) as *mut ()) {
@@ -337,6 +374,9 @@ where
     }
 }
 
+/// The [`Task`] struct represents a task.
+///
+/// It is used by [`crate::executor`].
 pub(crate) struct Task {
     ptr: NonNull<()>,
 }
@@ -382,6 +422,9 @@ impl Drop for Task {
     }
 }
 
+/// The [`TaskHandle`] struct is a handle to a [`Task`].
+///
+/// It implements [`Future`] and can be used to poll the task and retrieve its output.
 pub struct TaskHandle<T> {
     ptr: NonNull<()>,
     _marker: PhantomData<T>,
