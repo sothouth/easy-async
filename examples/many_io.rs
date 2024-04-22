@@ -5,9 +5,6 @@ use std::task::{Context, Poll};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use easy_async::block_on;
-use easy_async::spawn;
-
 fn main() {
     const N: usize = 10;
     const TIME: usize = 1000;
@@ -15,7 +12,7 @@ fn main() {
     let mut handles = Vec::with_capacity(N);
 
     for i in 1..=N {
-        handles.push(spawn(SimIO::new(
+        handles.push(easy_async::spawn(SimIO::new(
             i,
             Duration::from_millis((TIME / i) as u64),
             i - 1,
@@ -23,7 +20,7 @@ fn main() {
     }
 
     for handle in handles {
-        block_on(handle);
+        easy_async::block_on(handle);
     }
 }
 

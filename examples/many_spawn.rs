@@ -1,19 +1,19 @@
-use async_std::task::spawn_blocking;
-use easy_async::block_on;
-use easy_async::spawn;
-
-async fn fib(n: usize) -> usize {
-    if n < 2 {
-        1
-    } else {
-        spawn(async move { fib(n - 1).await }).await + spawn(async move { fib(n - 2).await }).await
-    }
-}
+use std::future::ready;
 
 fn main() {
-    block_on(async {
-        for _ in 0..10000 {
-            spawn!(spawn_blocking(|| {})).await;
-        }
-    });
+    const N: usize = 1_000_000;
+
+    let mut handles = Vec::with_capacity(N);
+
+    let mut sum = 0;
+
+    for _ in 0..N {
+        handles.push(easy_async::spawn(ready(1)));
+    }
+
+    for handle in handles {
+        sum += easy_async::block_on(handle);
+    }
+
+    assert_eq!(sum, N);
 }
