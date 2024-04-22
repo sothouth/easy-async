@@ -1,15 +1,12 @@
 //! Async executor.
 //!
-//! provide a simple executor.
+//! Provide a simple and easy-to-use asynchronous executor.
 //!
-//! Difference with [`smol`](https://docs.rs/smol):
-//!
-//! * Use a [`Mutex`] and worker local [`AtomicBool`] instead the `Sleepers` and `Ticker`.
-//! * Fixed number of workers
-//! * `task` can't be cancelled.
-//! * `task` will try to directly scehduled in the worker's queue.
-//! * Add a `RESERVE_SIZE` to reserve some capacity for future task self-scheduling.
-//! * Less steal.
+//! * A simplified worker block-wake mechanism for efficient task execution.
+//! * A fixed number of workers initiated upon startup to enhance performance.
+//! * Specialized `Task` objects designed for direct scheduling to local queues, bypassing the need for global queue scheduling.
+//! * Utilization of RESERVE_SIZE to reserve capacity for future task self-scheduling, optimizing task allocation.
+//! * Improved worker efficiency by minimizing futile task stealing.
 //!
 //! # Examples
 //!
@@ -23,6 +20,7 @@
 //!
 //! block_on(task);
 //! ```
+use std::env;
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::*};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -32,13 +30,16 @@ use concurrent_queue::ConcurrentQueue;
 
 use crate::task::{task_and_handle, Task, TaskHandle};
 
+/// Env variable that allows override default value of worker count.
+const ENV_THREADS_NUM_NAME: &str = "ASYNC_THREADS_NUM";
+
 static GLOBAL: OnceLock<Executor> = OnceLock::new();
 
 /// spawn a task, return a [`TaskHandle`].
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use easy_async::spawn;
 /// use easy_async::block_on;
 ///
@@ -136,7 +137,10 @@ impl Runtime {
     pub fn new() -> Self {
         Self {
             global_queue: ConcurrentQueue::unbounded(),
-            local_queues: (0..num_cpus::get())
+            local_queues: (0..match env::var(ENV_THREADS_NUM_NAME) {
+                Ok(s) => s.parse().unwrap_or(num_cpus::get()),
+                Err(_) => num_cpus::get(),
+            })
                 .map(|_| Arc::new(ConcurrentQueue::bounded(LOCAL_QUEUE_SIZE)))
                 .collect(),
             searching: Mutex::new(()),

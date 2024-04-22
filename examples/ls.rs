@@ -1,5 +1,9 @@
-use std::{env, fs, io};
+use std::io;
 
+#[cfg(feature = "unblock")]
+use std::{env, fs};
+
+#[cfg(feature = "unblock")]
 use futures::stream::StreamExt;
 
 fn main() -> io::Result<()> {
