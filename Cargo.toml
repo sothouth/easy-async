@@ -3,6 +3,7 @@ name = "easy-async"
 version = "0.1.0"
 edition = "2021"
 
+
 [features]
 unblock = [
     "futures-core",
@@ -12,27 +13,28 @@ unblock = [
     "futures-util",
 ]
 
+
 [dependencies]
 # executor,blocking
-concurrent-queue = { version = "*" }
+concurrent-queue = { version = "2.4.0" }
 # executor
-num_cpus = { version = "*" }
+num_cpus = { version = "1.16.0" }
 
 
 # unblock Stream
-futures-core = { version = "*", optional = true }
+futures-core = { version = "0.3.30", optional = true }
 # unblock
-async-channel = { version = "*", optional = true }
+futures-io = { version = "0.3.30", optional = true }
 # unblock
-piper = { version = "*", optional = true }
+futures-util = { version = "0.3.30", optional = true }
 # unblock
-futures-io = { version = "*", optional = true }
+async-channel = { version = "2.2.1", optional = true }
 # unblock
-futures-util = { version = "*", optional = true }
+piper = { version = "0.2.1", optional = true }
 
 
 [dev-dependencies]
-reqwest = { version = "*" }
-easy-parallel = { version = "*" }
-smol = { version = "*" }
-futures = { version = "*" }
+reqwest = { version = "0.12.4" }
+easy-parallel = { version = "3.3.1" }
+smol = { version = "2.0.0" }
+futures = { version = "0.3.30" }
