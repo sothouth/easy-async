@@ -3,40 +3,28 @@ use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::thread;
-use std::time::Duration;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-use futures::future::join_all;
-use tokio::runtime::{Builder, Runtime};
+use easy_async::block_on;
+use easy_async::spawn;
 
 fn main() {
-    let num = 10;
-    let sum_time = 1000;
-    let rt = Builder::new_current_thread().build().unwrap();
+    const N: usize = 10;
+    const TIME: usize = 1000;
 
-    let mut handles = Vec::with_capacity(num);
-    // for i in 0..num {
-    //     handles.push(rt.spawn(SimIO::new(10, Duration::from_millis(100), i)));
-    // }
-    // for i in 0..num {
-    //     handles.push(SimIO::new(10, Duration::from_millis(100), i));
-    // }
+    let mut handles = Vec::with_capacity(N);
 
-    for i in 1..=num {
-        handles.push(SimIO::new(
+    for i in 1..=N {
+        handles.push(spawn(SimIO::new(
             i,
-            Duration::from_millis((sum_time / i) as u64),
+            Duration::from_millis((TIME / i) as u64),
             i - 1,
-        ));
+        )));
     }
-    // let mut handles = vec![
-    //     SimIO::new(10, Duration::from_millis(100), 0),
-    //     SimIO::new(5, Duration::from_millis(200), 1),
-    //     SimIO::new(100, Duration::from_millis(10), 2),
-    // ];
 
-    // rt.block_on(join_all(handles));
-    easy_async::block_on(join_all(handles));
+    for handle in handles {
+        block_on(handle);
+    }
 }
 
 struct SimIO {
@@ -69,6 +57,7 @@ impl Future for SimIO {
         if Instant::now() < self.next_time {
             return Poll::Pending;
         }
+
         self.cur += 1;
         self.next_time = Instant::now() + self.need;
         println!("{}:{}", self.id, self.cur);

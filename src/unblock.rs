@@ -1,16 +1,10 @@
 use std::any::Any;
-use std::async_iter::AsyncIterator;
 use std::fmt;
 use std::future::Future;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::pin::Pin;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering::*;
-use std::sync::{Condvar, Mutex, MutexGuard};
 use std::task::ready;
 use std::task::{Context, Poll};
-use std::thread;
-use std::time::Duration;
 
 use async_channel::{bounded, Receiver};
 use futures_core::Stream;

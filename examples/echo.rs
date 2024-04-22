@@ -1,22 +1,27 @@
 #![feature(future_join)]
-use futures::StreamExt;
 use std::future::join;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
-use tokio::runtime::{Builder, Runtime};
-use tokio::spawn;
+use std::net::{TcpListener, TcpStream};
+
+use futures::StreamExt;
+use futures::prelude::*;
+use futures_core::Stream;
+// use tokio::io::{AsyncReadExt, AsyncWriteExt};
+// use tokio::net::{TcpListener, TcpStream};
+
+use easy_async::block_on;
+use easy_async::spawn;
+use easy_async::Unblock;
 
 fn main() {
-    let rt = Builder::new_current_thread().enable_all().build().unwrap();
     let fut = join!(serve(), client(), client());
-    rt.block_on(fut);
+    block_on(spawn(fut));
 }
 
 async fn serve() {
     println!("Server Start");
-    let listener = TcpListener::bind("127.0.0.1:29999").await.unwrap();
+    let listener = Unblock::new(TcpListener::bind("127.0.0.1:29999").unwrap());
     for _ in 0..2 {
-        let ret = listener.accept().await;
+        let ret = listener.poll_read().await;
         if let Ok((socket, addr)) = ret {
             tokio::spawn(async move {
                 handle_connection(socket).await;
