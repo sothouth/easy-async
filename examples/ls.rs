@@ -3,15 +3,21 @@ use std::{env, fs, io};
 use futures::stream::StreamExt;
 
 fn main() -> io::Result<()> {
-    let path = env::args().nth(1).unwrap_or_else(|| ".".to_string());
+    #[cfg(feature = "unblock")]
+    {
+        let path = env::args().nth(1).unwrap_or_else(|| ".".to_string());
 
-    easy_async::block_on(async {
-        let mut dir = easy_async::Unblock::new(fs::read_dir(path)?);
+        easy_async::block_on(async {
+            let mut dir = easy_async::Unblock::new(fs::read_dir(path)?);
 
-        while let Some(item) = dir.next().await {
-            println!("{}", item?.file_name().to_string_lossy());
-        }
+            while let Some(item) = dir.next().await {
+                println!("{}", item?.file_name().to_string_lossy());
+            }
 
-        Ok(())
-    })
+            Ok(())
+        })
+    }
+
+    #[cfg(not(feature = "unblock"))]
+    Ok(())
 }

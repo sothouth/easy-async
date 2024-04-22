@@ -13,7 +13,7 @@
 //!
 //! # Examples
 //!
-//! ```
+//! ```ignore
 //! use easy_async::spawn;
 //! use easy_async::block_on;
 //!

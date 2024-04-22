@@ -1,3 +1,7 @@
+//! An easy to use async runtime.
+//!
+//! Includes a async executor and a blocking executor.
+
 #![feature(decl_macro)]
 #![feature(async_iterator)]
 #![feature(future_join)]
@@ -29,7 +33,9 @@ pub use executor::spawn;
 pub mod blocking;
 pub use blocking::spawn_blocking;
 
+#[cfg(feature = "unblock")]
 pub mod unblock;
+#[cfg(feature = "unblock")]
 pub use unblock::Unblock;
 
 pub mod stream;

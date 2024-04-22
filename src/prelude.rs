@@ -7,3 +7,5 @@ pub use crate::blocking::spawn_blocking;
 
 pub use crate::task::OnceTaskHandle;
 pub use crate::task::TaskHandle;
+
+pub use crate::stream::AsyncIteratorExt as _;

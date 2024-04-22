@@ -1,3 +1,4 @@
+#![cfg(feature = "unblock")]
 use std::io::{Cursor, SeekFrom};
 use std::sync::mpsc;
 use std::thread;

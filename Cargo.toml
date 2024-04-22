@@ -3,24 +3,33 @@ name = "easy-async"
 version = "0.1.0"
 edition = "2021"
 
-[workspace]
-members = ["xpxc"]
+[features]
+unblock = [
+    "futures-core",
+    "async-channel",
+    "piper",
+    "futures-io",
+    "futures-util",
+]
 
 [dependencies]
-# unblock Stream
-futures-core = { version = "*" }
-# unblock
-async-channel = { version = "*" }
-# unblock
-piper = { version = "*" }
-# unblock
-futures-io = { version = "*" }
-# unblock
-futures-util = { version = "*" }
 # executor,blocking
 concurrent-queue = { version = "*" }
 # executor
 num_cpus = { version = "*" }
+
+
+# unblock Stream
+futures-core = { version = "*", optional = true }
+# unblock
+async-channel = { version = "*", optional = true }
+# unblock
+piper = { version = "*", optional = true }
+# unblock
+futures-io = { version = "*", optional = true }
+# unblock
+futures-util = { version = "*", optional = true }
+
 
 [dev-dependencies]
 reqwest = { version = "*" }
