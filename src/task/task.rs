@@ -77,7 +77,7 @@ struct Header {
 impl Header {
     fn new(vtable: &'static TaskVTable, rt: &Arc<Runtime>) -> Self {
         Self {
-            state: AtomicUsize::new(SLEEPING),
+            state: AtomicUsize::new(SCHEDULED),
             refer: AtomicUsize::new(0),
             waker: AtomicWaker::new(),
             rt: Arc::clone(rt),
@@ -240,9 +240,7 @@ where
                     }
                 }
                 Ok(_) => break,
-                Err(state) => {
-                    unreachable!("invalid run task state: {}", state);
-                }
+                Err(_) => return,
             }
         }
 
@@ -431,14 +429,6 @@ impl Task {
         mem::forget(self);
 
         header.rt.tasks.fetch_add(1, AcqRel);
-
-        match header
-            .state
-            .compare_exchange(SLEEPING, SCHEDULED, AcqRel, Acquire)
-        {
-            Ok(_) => {}
-            Err(state) => unreachable!("invalid run task state: {}", state),
-        }
 
         unsafe { (header.vtable.schedule)(ptr) };
     }
