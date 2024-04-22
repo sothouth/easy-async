@@ -1,21 +1,21 @@
 #![feature(async_iterator)]
-use std::async_iter::AsyncIterator;
-use std::{
-    future::Future,
-    pin::Pin,
-    task::{Context, Poll},
-};
 
-#[async_std::main]
-async fn main() {
-    let mut cur = 0;
-    let mut counter = Counter::new();
-    while let Some(i) = counter.next().await {
-        println!("{}", i);
-        assert_eq!(i, cur);
-        cur += 1;
-    }
-    assert_eq!(cur, 6);
+use std::async_iter::AsyncIterator;
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
+fn main() {
+    easy_async::block_on(async {
+        let mut cur = 0;
+        let mut counter = Counter::new();
+        while let Some(i) = counter.next().await {
+            println!("{}", i);
+            assert_eq!(i, cur);
+            cur += 1;
+        }
+        assert_eq!(cur, 6);
+    });
 }
 
 struct Counter {

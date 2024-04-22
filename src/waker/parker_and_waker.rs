@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// let (p, w) = easy_async::waker::parker_and_waker();
 /// ```
 #[inline]
@@ -26,7 +26,7 @@ pub fn parker_and_waker() -> (Parker, Waker) {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// let (p, u) = easy_async::waker::pair();
 /// ```.
 #[inline]

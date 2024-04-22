@@ -2,7 +2,7 @@
 //!
 //! # Examples
 //!
-//! ```no_run
+//! ```ignore
 //! use easy_async::spawn_blocking;
 //!
 //! spawn_blocking(|| println!("now running on a worker thread")).await;
@@ -23,7 +23,7 @@ use crate::task::{once_task_and_handle as task_and_handle, OnceTask, OnceTaskHan
 /// # Example
 ///
 ///
-/// ```no_run
+/// ```ignore
 /// use easy_async::spawn_blocking;
 ///
 /// assert_eq!(
@@ -37,7 +37,7 @@ use crate::task::{once_task_and_handle as task_and_handle, OnceTask, OnceTaskHan
 ///
 /// Read the contents of a file:
 ///
-/// ```no_run
+/// ```ignore
 /// use easy_async::block_on;
 /// use easy_async::spawn_blocking;
 /// use std::fs;

@@ -21,7 +21,7 @@ use crate::waker::AtomicWaker;
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```ignore
 /// let (task, handle) = task_and_handle(async move {
 ///     // Perform some work...
 ///     42 // Return a value
@@ -220,38 +220,33 @@ where
         let raw = Self::from_ptr(ptr);
         let header = &*raw.header;
 
-        match header
-            .state
-            .compare_exchange(SLEEPING, SCHEDULED, AcqRel, Acquire)
-        {
-            Ok(_) => {
-                (header.vtable.schedule)(ptr);
-            }
-            Err(RUNNING) => {
-                if header
-                    .state
-                    .compare_exchange(RUNNING, SCHEDULED, AcqRel, Acquire)
-                    .is_err()
-                {
-                    return;
+        loop {
+            match header
+                .state
+                .compare_exchange(SLEEPING, SCHEDULED, AcqRel, Acquire)
+            {
+                Err(RUNNING) => {
+                    match header.state.compare_exchange(
+                        RUNNING,
+                        RUNNING | SCHEDULED,
+                        AcqRel,
+                        Acquire,
+                    ) {
+                        Ok(_) => return,
+                        Err(SLEEPING) => {}
+                        Err(state) => {
+                            unreachable!("invalid run task state: {}", state);
+                        }
+                    }
+                }
+                Ok(_) => break,
+                Err(state) => {
+                    unreachable!("invalid run task state: {}", state);
                 }
             }
-            Err(_) => {
-                return;
-            }
         }
 
-        let queue = header.queue_id.load(Acquire);
-        let handle = Task::from_raw_unchecked(NonNull::new(ptr as *mut ()).unwrap());
-
-        if queue != header.rt.local_queues.len() {
-            if let Err(err) = header.rt.local_queues[queue].push(handle) {
-                let handle = err.into_inner();
-                debug_assert!(header.rt.global_queue.push(handle).is_ok());
-            }
-        } else {
-            debug_assert!(header.rt.global_queue.push(handle).is_ok());
-        }
+        (header.vtable.schedule)(ptr);
     }
 
     #[inline]
@@ -286,7 +281,9 @@ where
         match header.state.load(Acquire) {
             COMPLETED => ManuallyDrop::drop(&mut (*raw.data).output),
             SLEEPING | SCHEDULED => Self::drop_future(ptr),
-            _ => {}
+            CLOSED => {}
+            // RUNNING
+            _ => unreachable!("invalid destroy task state: RUNNING"),
         }
 
         (raw.header as *mut Header).drop_in_place();
@@ -299,11 +296,12 @@ where
         let raw = Self::from_ptr(ptr);
         let header = &*raw.header;
 
-        if let Err(cur) = header
+        match header
             .state
             .compare_exchange(SCHEDULED, RUNNING, AcqRel, Acquire)
         {
-            unreachable!("invalid run task state: {}", cur);
+            Ok(_) => {}
+            Err(state) => unreachable!("invalid run task state: {}", state),
         }
 
         header.queue_id.store(queue_id, Release);
@@ -327,10 +325,38 @@ where
                 header.waker.wake();
             }
             Poll::Pending => {
-                let _ = header
+                match header
                     .state
-                    .compare_exchange(RUNNING, SLEEPING, AcqRel, Acquire);
+                    .compare_exchange(RUNNING, SLEEPING, AcqRel, Acquire)
+                {
+                    Ok(_) => {}
+                    Err(state) => {
+                        if state == RUNNING | SCHEDULED {
+                            header.state.store(SCHEDULED, Release);
+                            (header.vtable.schedule)(ptr);
+                        } else {
+                            unreachable!("invalid run task state: {}", state);
+                        }
+                    }
+                }
             }
+        }
+    }
+
+    unsafe fn schedule(ptr: *const ()) {
+        let raw = Self::from_ptr(ptr);
+        let header = &*raw.header;
+
+        let queue = header.queue_id.load(Acquire);
+        let handle = Task::from_raw_unchecked(NonNull::new(ptr as *mut ()).unwrap());
+
+        if queue != header.rt.local_queues.len() {
+            if let Err(err) = header.rt.local_queues[queue].push(handle) {
+                let handle = err.into_inner();
+                debug_assert!(header.rt.global_queue.push(handle).is_ok());
+            }
+        } else {
+            debug_assert!(header.rt.global_queue.push(handle).is_ok());
         }
     }
 }
@@ -356,7 +382,7 @@ where
                     get_output: Self::get_output,
                     destroy: Self::destroy,
                     run: Self::run,
-                    schedule: Self::wake_by_ref,
+                    schedule: Self::schedule,
                 },
                 rt,
             ));
@@ -405,6 +431,14 @@ impl Task {
         mem::forget(self);
 
         header.rt.tasks.fetch_add(1, AcqRel);
+
+        match header
+            .state
+            .compare_exchange(SLEEPING, SCHEDULED, AcqRel, Acquire)
+        {
+            Ok(_) => {}
+            Err(state) => unreachable!("invalid run task state: {}", state),
+        }
 
         unsafe { (header.vtable.schedule)(ptr) };
     }

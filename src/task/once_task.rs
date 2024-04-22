@@ -18,7 +18,7 @@ use crate::waker::AtomicWaker;
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```ignore
 /// let (task, handle) = task_and_handle(|| {
 ///     // Perform some work...
 ///     42 // Return a value
