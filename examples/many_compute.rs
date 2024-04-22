@@ -17,14 +17,18 @@ fn main() {
     const N: usize = 1000;
     const M: usize = 30;
 
+    // Compute the `M`th Fibonacci number using an efficient iterative method.
     let res = fast_fib(M);
 
+    // Prepare to store handles for spawned blocking tasks.
     let mut handles = Vec::with_capacity(N);
 
+    // Spawn `N` blocking tasks to compute the `M`th Fibonacci number concurrently.
     for _ in 0..N {
         handles.push(easy_async::spawn_blocking(|| fib(M)));
     }
 
+    // Ensure that each blocking task returns the correct Fibonacci number.
     for handle in handles {
         assert_eq!(easy_async::block_on(handle), res);
     }

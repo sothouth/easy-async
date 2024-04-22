@@ -1,6 +1,8 @@
-//! An easy to use async runtime.
+//! A simple and easy to used asynchronous runtime.
 //!
-//! Includes a async executor and a blocking executor.
+//! The runtime includes two main components:
+//! * Asynchronous Executor
+//! * Blocking Executor
 
 #![feature(decl_macro)]
 #![feature(async_iterator)]
