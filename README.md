@@ -8,10 +8,10 @@ This runtime revolves around two core components:
 
 The provided executor allows for fast and effortless execution of asynchronous tasks. There's no need to configure or construct a runtime using a Builder. Simply use `spawn` to run your async tasks.
 
-- A simplified worker block-wake mechanism for efficient task execution.
+- Specialised `Task` objects designed for direct scheduling into local queues, bypassing the additional need for global queue scheduling, reducing cache misses and the performance overhead of repeated enqueuing and dequeuing.
+- A simplified worker block-wake mechanism implemented through `Mutex` for efficient task execution.
 - A fixed number of workers launched at startup to improve performance.
-- Specialised `Task' objects designed for direct scheduling into local queues, bypassing the need for global queue scheduling.
-- Use of RESERVE_SIZE to reserve capacity for future task self-scheduling, optimising task allocation.
+- Use of `RESERVE_SIZE` to reserve capacity for future task self-scheduling, optimising task allocation.
 - Improved worker efficiency by minimising wasted task stealing.
 
 ## Blocking Executor
