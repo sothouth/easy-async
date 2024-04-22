@@ -7,14 +7,26 @@ edition = "2021"
 members = ["xpxc"]
 
 [dependencies]
-# CachePadded
-crossbeam-utils = { version = "*" }
-num_cpus = { version = "*" }
-parking = { version = "*" }
+
+# unblock Stream
+futures-core = { version = "*" }
+# unblock
+async-channel = { version = "*" }
+# unblock
+piper = { version = "*" }
+# unblock
+futures-io = { version = "*" }
+# unblock
+futures-util = { version = "*" }
+# executor,blocking
 concurrent-queue = { version = "*" }
-easy-parallel = { version = "*" }
-slab = { version = "*" }
-# fastrand = { version = "*" }
+# executor
+num_cpus = { version = "*" }
+
+
+parking = { version = "*" }
+# easy-parallel = { version = "*" }
+# slab = { version = "*" }
 
 parking_lot = { version = "*" }
 
@@ -28,21 +40,14 @@ async-io = { version = "*" }
 async-lock = { version = "*" }
 async-task = { version = "*" }
 async-executor = { version = "*" }
-async-channel = { version = "*" }
 
 crossbeam = { version = "*" }
-
-futures-core = { version = "*" }
-
-
 futures = { version = "*" }
 
 
 tokio = { version = "*", features = ["full"] }
 async-std = { version = "*", features = ["unstable", "attributes"] }
 waker-fn = { version = "*" }
-# mini-redis = { version = "*" }
-# mini-tokio = { version = "*" }
 
 [dev-dependencies]
 reqwest = { version = "*" }

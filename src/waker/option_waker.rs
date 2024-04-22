@@ -40,7 +40,7 @@ impl OptionWaker {
         unsafe { (*self.0.get()).clone_from(waker) }
     }
 
-    /// Like `Waker::will_wake`.
+    /// Like [`Waker::will_wake`].
     #[inline]
     pub fn will_wake<T: Borrow<Waker>>(&self, other: &T) -> bool {
         unsafe { (*self.0.get()).will_wake(other.borrow()) }
@@ -49,10 +49,10 @@ impl OptionWaker {
     /// Check if the waker is a NOOP waker, slightly slow.
     #[inline]
     pub fn is_noop(&self) -> bool {
-        // NOOP.as_raw().vtable() is not right.
-        // const RawWaker::NOOP have two copy
-        // the Waker::noop()'s vtable have the ptr inside Waker::noop()
-        // any clone of Waker::noop()'s vtable ptr equal to RawWaker::NOOP.vtable
+        // `NOOP.as_raw().vtable()` is not right.
+        // const `RawWaker::NOOP` have two copy
+        // the `Waker::noop()`'s vtable have the ptr inside Waker::noop()
+        // any clone of `Waker::noop()`'s vtable ptr equal to `RawWaker::NOOP.vtable`
         let ptr: &'static RawWakerVTable = NOOP.clone().as_raw().vtable();
         unsafe { ptr::eq((*self.0.get()).as_raw().vtable(), ptr) }
     }

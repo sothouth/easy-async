@@ -30,6 +30,7 @@ pub mod blocking;
 pub use blocking::spawn_blocking;
 
 pub mod unblock;
+pub use unblock::Unblock;
 
 pub mod waker;
 
