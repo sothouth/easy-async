@@ -1,9 +1,10 @@
 #![feature(async_iterator)]
 
 use std::async_iter::AsyncIterator;
-use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
+
+use easy_async::stream::AsyncIteratorExt;
 
 fn main() {
     easy_async::block_on(async {
@@ -39,27 +40,5 @@ impl AsyncIterator for Counter {
         } else {
             Poll::Ready(None)
         }
-    }
-}
-
-struct Stream<'a, T: Unpin + ?Sized> {
-    stream: &'a mut T,
-}
-
-trait AsyncIteratorExt: AsyncIterator {
-    fn next(&mut self) -> Stream<Self>
-    where
-        Self: Unpin,
-    {
-        Stream { stream: self }
-    }
-}
-
-impl<T: AsyncIterator> AsyncIteratorExt for T {}
-
-impl<T: AsyncIterator + Unpin + ?Sized> Future for Stream<'_, T> {
-    type Output = Option<T::Item>;
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        Pin::new(&mut *self.stream).poll_next(cx)
     }
 }

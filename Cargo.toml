@@ -7,7 +7,6 @@ edition = "2021"
 members = ["xpxc"]
 
 [dependencies]
-
 # unblock Stream
 futures-core = { version = "*" }
 # unblock
@@ -23,35 +22,8 @@ concurrent-queue = { version = "*" }
 # executor
 num_cpus = { version = "*" }
 
-
-parking = { version = "*" }
-# easy-parallel = { version = "*" }
-# slab = { version = "*" }
-
-parking_lot = { version = "*" }
-
-futures-timer = { version = "*" }
-
-# monoio = { version = "*" }
-
-smol = { version = "*" }
-futures-lite = { version = "*" }
-async-io = { version = "*" }
-async-lock = { version = "*" }
-async-task = { version = "*" }
-async-executor = { version = "*" }
-
-crossbeam = { version = "*" }
-futures = { version = "*" }
-
-
-tokio = { version = "*", features = ["full"] }
-async-std = { version = "*", features = ["unstable", "attributes"] }
-waker-fn = { version = "*" }
-
 [dev-dependencies]
 reqwest = { version = "*" }
 easy-parallel = { version = "*" }
-
-# [target.'cfg(loom)'.dependencies]
-# loom = { version = "0.7", optional = true }
+smol = { version = "*" }
+futures = { version = "*" }

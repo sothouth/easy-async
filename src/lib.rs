@@ -32,10 +32,10 @@ pub use blocking::spawn_blocking;
 pub mod unblock;
 pub use unblock::Unblock;
 
+pub mod stream;
+
 pub mod waker;
 
 pub mod future;
-pub mod macros;
-pub mod stream;
 
 pub mod utils;
