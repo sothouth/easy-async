@@ -225,7 +225,7 @@ where
             .compare_exchange(SLEEPING, SCHEDULED, AcqRel, Acquire)
         {
             Ok(_) => {
-                ((*header.vtable).schedule)(ptr);
+                (header.vtable.schedule)(ptr);
             }
             Err(RUNNING) => {
                 if header
@@ -327,13 +327,9 @@ where
                 header.waker.wake();
             }
             Poll::Pending => {
-                match header
+                let _ = header
                     .state
-                    .compare_exchange(RUNNING, SLEEPING, AcqRel, Acquire)
-                {
-                    Ok(_) => {}
-                    Err(_) => {}
-                }
+                    .compare_exchange(RUNNING, SLEEPING, AcqRel, Acquire);
             }
         }
     }

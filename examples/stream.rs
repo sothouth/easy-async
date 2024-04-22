@@ -31,8 +31,8 @@ impl Counter {
 impl AsyncIterator for Counter {
     type Item = usize;
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let res=self.cur;
+    fn poll_next(mut self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let res = self.cur;
         self.cur += 1;
         if res < 6 {
             Poll::Ready(Some(res))

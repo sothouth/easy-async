@@ -145,6 +145,12 @@ impl Runtime {
     }
 }
 
+impl Default for Runtime {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// single thread worker
 pub struct Worker {
     /// The worker's unique id.
@@ -220,10 +226,12 @@ impl Worker {
     }
 
     fn next_by(&self, mut search: impl FnMut() -> Option<Task>) -> Task {
+        // Allow worker search once.
         self.searching.store(true, Release);
         loop {
             let mut _token = None;
-            if self.searching.load(Acquire) == false {
+            // If worker are not allowed to search, lock the searching mutex.
+            if !self.searching.load(Acquire) {
                 _token = Some(self.rt.searching.lock().unwrap());
             }
             match search() {

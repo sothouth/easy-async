@@ -3,7 +3,7 @@ use std::cell::UnsafeCell;
 use std::task::{RawWakerVTable, Waker};
 use std::{fmt, ptr};
 
-const NOOP: &'static Waker = Waker::noop();
+const NOOP: &Waker = Waker::noop();
 
 /// Another version of [`UnsafeCell<Option<Waker>>`], maybe faster.
 #[repr(transparent)]

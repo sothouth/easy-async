@@ -131,7 +131,7 @@ impl ThreadPool {
     {
         let (task, handle) = task_and_handle(f);
 
-        debug_assert!(self.queue.push(task.into()).is_ok());
+        debug_assert!(self.queue.push(task).is_ok());
 
         self.schedule(self.inner.lock().unwrap());
 
@@ -186,9 +186,10 @@ impl ThreadPool {
             inner.thread_count += 1;
             inner.idle_count += 1;
 
-            if let Err(_) = thread::Builder::new()
+            if thread::Builder::new()
                 .name(format!("blocking-{}", id))
                 .spawn(move || self.worker())
+                .is_err()
             {
                 inner.thread_count -= 1;
                 inner.idle_count -= 1;

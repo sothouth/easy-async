@@ -5,7 +5,7 @@ use std::task::{Context, Poll};
 /// Creates a future that been polls only once.
 ///
 /// Return a [`PollOnce`].
-pub fn poll_once<'a, F>(f: Pin<&'a mut F>) -> PollOnce<'a, F> {
+pub fn poll_once<F>(f: Pin<&mut F>) -> PollOnce<'_, F> {
     PollOnce { f }
 }
 

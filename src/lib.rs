@@ -39,6 +39,3 @@ pub mod macros;
 pub mod stream;
 
 pub mod utils;
-
-#[test]
-fn temp() {}

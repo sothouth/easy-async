@@ -43,7 +43,7 @@ pub fn block_on<F: Future>(fut: F) -> F::Output {
             }
         };
 
-        let cx = &mut Context::from_waker(&waker);
+        let cx = &mut Context::from_waker(waker);
 
         loop {
             match fut.as_mut().poll(cx) {

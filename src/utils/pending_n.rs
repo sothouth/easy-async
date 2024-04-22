@@ -25,6 +25,8 @@ impl Future for PendingN {
             Poll::Ready(())
         } else {
             if self.cur & 1 == 0 {
+                // Try clone waker
+                #[allow(clippy::waker_clone_wake)]
                 cx.waker().clone().wake();
             } else {
                 cx.waker().wake_by_ref();

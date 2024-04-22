@@ -33,6 +33,6 @@ where
     type Output = T;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<T> {
-        (unsafe { &mut self.get_unchecked_mut().0 })(cx)
+        unsafe { (self.get_unchecked_mut().0)(cx) }
     }
 }

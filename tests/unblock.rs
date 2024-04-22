@@ -9,7 +9,7 @@ use easy_async::Unblock;
 
 #[test]
 fn chan() {
-    const N: i32 = if cfg!(miri) { 50 } else { 100_000 };
+    const N: i32 = 100_000;
 
     block_on(async {
         let (s, r) = mpsc::sync_channel::<i32>(100);
@@ -31,7 +31,7 @@ fn chan() {
 
 #[test]
 fn read() {
-    const N: usize = if cfg!(miri) { 20_000 } else { 20_000_000 };
+    const N: usize = 20_000_000;
 
     block_on(async {
         let mut v1 = vec![0u8; N];
@@ -50,7 +50,7 @@ fn read() {
 
 #[test]
 fn write() {
-    const N: usize = if cfg!(miri) { 20_000 } else { 20_000_000 };
+    const N: usize = 20_000_000;
 
     block_on(async {
         let mut v1 = vec![0u8; N];
