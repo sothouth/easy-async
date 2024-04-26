@@ -126,14 +126,14 @@ impl TaskLayout {
         let pad = pre.padding_needed_for(nex.align());
 
         let Some(offset) = pre.size().checked_add(pad) else {
-            panic!("OnceTaskLayout extend offset overflow");
+            panic!("TaskLayout extend offset overflow");
         };
         let Some(size) = offset.checked_add(nex.size()) else {
-            panic!("OnceTaskLayout extend size overflow");
+            panic!("TaskLayout extend size overflow");
         };
 
         let Ok(layout) = Layout::from_size_align(size, align) else {
-            panic!("OnceTaskLayout construct layout error");
+            panic!("TaskLayout construct layout error");
         };
 
         (layout, offset)
@@ -188,7 +188,7 @@ impl<F, T> RawTask<F, T> {
     }
 }
 
-//Impl `RawWakerVTable` for `RawTask`
+// Impl `RawWakerVTable` for `RawTask`
 impl<F, T> RawTask<F, T>
 where
     F: Future<Output = T> + Send + 'static,
